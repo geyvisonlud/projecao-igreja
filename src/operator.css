@@ -468,3 +468,162 @@ dialog h2 {
   display: flex;
   gap: 8px;
 }
+
+/* roteiro + biblioteca na coluna da esquerda */
+.layout {
+  grid-template-columns: 300px 1fr 380px;
+}
+.library .plan,
+.library .lib {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.library .plan {
+  flex: 1 1 48%;
+}
+.library .lib {
+  flex: 1 1 52%;
+  border-top: 1px solid var(--line);
+}
+.sec-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 12px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+button.mini {
+  font-size: 11px;
+  padding: 2px 7px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.lib .lib-head {
+  padding-top: 4px;
+}
+.plan-select {
+  padding: 0 12px 8px;
+}
+.plan-select select {
+  width: 100%;
+}
+.plan-items {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+.plan-items li,
+.song-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plan-items li {
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border-top: 2px solid transparent;
+}
+.plan-items li:hover {
+  background: var(--panel-2);
+}
+.plan-items li.selected {
+  background: #2b3550;
+}
+.plan-items li.dragging {
+  opacity: 0.4;
+}
+.plan-items li.drop {
+  border-top-color: var(--accent);
+}
+.plan-items li.broken .t {
+  color: #ff8a8e;
+}
+.plan-items .n {
+  width: 18px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--muted);
+}
+.plan-items .ic {
+  width: 16px;
+  text-align: center;
+  color: var(--muted);
+}
+.plan-items .body,
+.song-list .body {
+  flex: 1;
+  min-width: 0;
+}
+.plan-items .t,
+.plan-items .s {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plan-items .t {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.plan-items .s {
+  font-size: 12px;
+  color: var(--muted);
+}
+.plan-items li.is-live .t::after {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live);
+}
+.plan-items .rm,
+.song-list .add {
+  visibility: hidden;
+  padding: 0 7px;
+  font-size: 12px;
+  line-height: 20px;
+}
+.plan-items li:hover .rm,
+.song-list li:hover .add {
+  visibility: visible;
+}
+.song-list .add {
+  font-size: 15px;
+}
+.plan-empty {
+  padding: 8px 14px;
+}
+.plan-foot {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+}
+
+/* diálogos pequenos */
+dialog.small-dialog {
+  width: min(480px, 92vw);
+  height: auto;
+}
+dialog.small-dialog form > div[data-for] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+dialog.small-dialog textarea {
+  resize: vertical;
+  font: 14px/1.5 -apple-system, 'Helvetica Neue', Arial, sans-serif;
+}

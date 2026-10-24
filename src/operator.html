@@ -24,12 +24,33 @@
 
     <main class="layout">
       <aside class="library">
-        <div class="lib-head">
-          <input id="search" type="search" placeholder="Buscar título ou trecho da letra…" />
-          <button id="newSong" class="primary" title="Nova música (⌘N)">+ Nova</button>
-        </div>
-        <ul id="songList" class="song-list"></ul>
-        <div id="songCount" class="muted small lib-foot"></div>
+        <section class="plan">
+          <div class="sec-head">
+            <span>Roteiro</span>
+            <span class="spacer"></span>
+            <button id="planNew" class="mini">Novo</button>
+            <button id="planEdit" class="mini">Editar</button>
+            <button id="planDup" class="mini" title="Duplicar este roteiro">Duplicar</button>
+            <button id="planDel" class="mini danger" title="Excluir este roteiro">✕</button>
+          </div>
+          <div class="plan-select"><select id="planSelect"></select></div>
+          <ol id="planItems" class="plan-items"></ol>
+          <div id="planEmpty" class="muted small plan-empty"></div>
+          <div class="plan-foot">
+            <button id="addTimer" class="mini">+ Timer</button>
+            <button id="addAviso" class="mini">+ Aviso</button>
+          </div>
+        </section>
+
+        <section class="lib">
+          <div class="sec-head"><span>Biblioteca</span></div>
+          <div class="lib-head">
+            <input id="search" type="search" placeholder="Buscar título ou trecho da letra…" />
+            <button id="newSong" class="primary" title="Nova música (⌘N)">+ Nova</button>
+          </div>
+          <ul id="songList" class="song-list"></ul>
+          <div id="songCount" class="muted small lib-foot"></div>
+        </section>
       </aside>
 
       <section class="center">
@@ -39,12 +60,18 @@
               <h2 id="songTitle"></h2>
               <div id="songMeta" class="muted"></div>
             </div>
-            <button id="editSong">Editar</button>
+            <div class="row">
+              <button id="addToPlan">+ Roteiro</button>
+              <button id="editSong">Editar</button>
+            </div>
           </div>
           <div id="slides" class="slides"></div>
           <div id="emptyState" class="empty">
-            <p><strong>Nenhuma música selecionada.</strong></p>
-            <p class="muted">Clique em <em>+ Nova</em> e cole a letra. Linha em branco separa os slides.</p>
+            <p><strong>Nada selecionado.</strong></p>
+            <p class="muted">
+              Escolha um item do roteiro ou uma música da biblioteca. Para cadastrar, clique em <em>+ Nova</em> e cole
+              a letra.
+            </p>
           </div>
         </div>
 
@@ -148,6 +175,42 @@
           <button type="button" id="edDelete" class="danger">Excluir</button>
           <span class="spacer"></span>
           <button type="button" id="edCancel">Cancelar</button>
+          <button type="submit" class="primary">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="planDialog" class="small-dialog">
+      <form id="planForm">
+        <h2 id="planHeading">Novo roteiro</h2>
+        <label class="field">Nome <input name="name" required placeholder="Ex.: Culto de domingo à noite" /></label>
+        <label class="field">Data <input name="date" type="date" required /></label>
+        <div class="ed-actions">
+          <span class="spacer"></span>
+          <button type="button" data-close>Cancelar</button>
+          <button type="submit" class="primary">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="itemDialog" class="small-dialog">
+      <form id="itemForm">
+        <h2 id="itemHeading">Aviso</h2>
+        <div data-for="timer">
+          <label class="field">Duração (minutos) <input name="minutes" type="number" min="0" step="0.5" /></label>
+          <label class="field">Mensagem acima do timer <input name="message" /></label>
+          <label class="field">Mensagem ao terminar <input name="endMessage" placeholder="Opcional" /></label>
+        </div>
+        <div data-for="text">
+          <label class="field">Título <span class="muted">(só aparece no roteiro)</span> <input name="title" /></label>
+          <label class="field">
+            Texto <span class="muted">— linha em branco separa os slides (<span id="itemCount">0</span>)</span>
+            <textarea name="text" rows="10"></textarea>
+          </label>
+        </div>
+        <div class="ed-actions">
+          <span class="spacer"></span>
+          <button type="button" data-close>Cancelar</button>
           <button type="submit" class="primary">Salvar</button>
         </div>
       </form>

@@ -127,22 +127,28 @@ function createOperator() {
 
 // ---------- IPC ----------
 
-ipcMain.handle('songs:list', () => readJson('songs.json', []));
+// Lista de registros com id gravada num arquivo: músicas e roteiros de culto.
+function collection(name, file) {
+  ipcMain.handle(`${name}:list`, () => readJson(file, []));
 
-ipcMain.handle('songs:save', (_e, song) => {
-  const songs = readJson('songs.json', []);
-  const now = new Date().toISOString();
-  const saved = { ...song, id: song.id || crypto.randomUUID(), updatedAt: now, createdAt: song.createdAt || now };
-  const i = songs.findIndex((s) => s.id === saved.id);
-  if (i >= 0) songs[i] = saved;
-  else songs.push(saved);
-  writeJson('songs.json', songs);
-  return saved;
-});
+  ipcMain.handle(`${name}:save`, (_e, record) => {
+    const records = readJson(file, []);
+    const now = new Date().toISOString();
+    const saved = { ...record, id: record.id || crypto.randomUUID(), updatedAt: now, createdAt: record.createdAt || now };
+    const i = records.findIndex((r) => r.id === saved.id);
+    if (i >= 0) records[i] = saved;
+    else records.push(saved);
+    writeJson(file, records);
+    return saved;
+  });
 
-ipcMain.handle('songs:delete', (_e, id) => {
-  writeJson('songs.json', readJson('songs.json', []).filter((s) => s.id !== id));
-});
+  ipcMain.handle(`${name}:delete`, (_e, id) => {
+    writeJson(file, readJson(file, []).filter((r) => r.id !== id));
+  });
+}
+
+collection('songs', 'songs.json');
+collection('plans', 'plans.json');
 
 ipcMain.handle('media:list', () => mediaWithUrls());
 

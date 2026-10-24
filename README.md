@@ -1,7 +1,7 @@
 # Projeção Igreja
 
-Software de apresentação para o telão da igreja (macOS). Versão 0.1: **banco de músicas**,
-**projeção de letras**, **timer** e **fundos em vídeo/imagem**.
+Software de apresentação para o telão da igreja (macOS). Versão 0.2: **banco de músicas**,
+**roteiro do culto**, **projeção de letras**, **timer** e **fundos em vídeo/imagem**.
 
 ## Como rodar no Mac
 
@@ -38,6 +38,20 @@ numa janela para testes. Enquanto a projeção está aberta, o Mac não apaga a 
 
 A busca (⌘F) procura no título, artista, tags e no texto da letra, sem diferenciar acentos.
 
+**Roteiro do culto:** na parte de cima da coluna da esquerda. Monte antes do culto:
+
+- **+** ao lado de uma música da biblioteca (ou **+ Roteiro** no topo dos slides) coloca a música
+  no roteiro. Se ainda não houver roteiro, um "Culto" do próximo domingo é criado automaticamente;
+- **+ Timer** e **+ Aviso** adicionam uma contagem regressiva ou slides de texto livre;
+- arraste os itens para mudar a ordem; **✕** tira do roteiro; duplo clique edita;
+- **Novo**, **Editar** (nome e data), **Duplicar** (bom para repetir o culto da semana anterior)
+  e **✕** (excluir o roteiro) ficam no cabeçalho.
+
+Durante o culto, ao chegar no último slide de um item, **→** seleciona o próximo item do roteiro
+sem projetá-lo; o próximo **→** projeta o primeiro slide dele. Assim dá para fazer uma pausa entre
+as músicas. Selecionar um timer do roteiro carrega a duração e as mensagens dele na aba Timer;
+depois é só **Iniciar** e **Projetar**.
+
 **Durante o culto:** clique num slide para mandá-lo ao telão.
 
 | Tecla | Ação |
@@ -59,7 +73,8 @@ aparece apagado na lista. Prefira vídeos em H.264 (`.mp4`); `.mov` em ProRes n�
 
 ## Onde ficam os dados
 
-Em `~/Library/Application Support/projecao-igreja/`: `songs.json` (músicas), `media.json`
+Em `~/Library/Application Support/projecao-igreja/`: `songs.json` (músicas), `plans.json`
+(roteiros), `media.json`
 (fundos) e `settings.json` (preferências). Para fazer backup do banco de músicas, copie o
 `songs.json`.
 
@@ -75,6 +90,5 @@ Em `~/Library/Application Support/projecao-igreja/`: `songs.json` (músicas), `m
 ## Próximos passos
 
 - tela de palco (próximo slide, relógio, cronômetro da pregação)
-- roteiro do culto (lista de músicas e itens na ordem)
 - fundo próprio por música, logo da igreja
 - Bíblia, avisos, controle pelo celular
