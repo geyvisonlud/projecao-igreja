@@ -1,4 +1,4 @@
-const api = window.api;
+// `api` é exposto pelo preload (contextBridge); redeclará-lo aqui quebra o script no Electron.
 const { parse, normalize } = window.Lyrics;
 const { fmt, remaining } = window.ScreenView;
 
