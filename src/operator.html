@@ -38,7 +38,7 @@
           <div id="planEmpty" class="muted small plan-empty"></div>
           <div class="plan-foot">
             <button id="addTimer" class="mini">+ Timer</button>
-            <button id="addAviso" class="mini">+ Aviso</button>
+            <button id="addSlides" class="mini" title="Textos, imagens, vídeos ou PowerPoint">+ Telas</button>
           </div>
         </section>
 
@@ -77,6 +77,10 @@
 
         <div id="timerPanel" class="panel hidden">
           <div class="timer-panel">
+            <div id="tPending" class="pending hidden">
+              <span id="tPendingText"></span>
+              <button id="tLoad" class="primary">Carregar</button>
+            </div>
             <div class="big-timer" id="tDisplay">05:00</div>
             <div class="row presets">
               <span class="muted">Duração:</span>
@@ -122,11 +126,16 @@
           <button id="blackBtn">Tela preta <kbd>B</kbd></button>
           <button id="hideBtn">Ocultar letra <kbd>C</kbd></button>
         </div>
+        <div id="videoControls" class="live-controls hidden">
+          <button id="vPlay">❚❚ Pausar vídeo</button>
+          <button id="vRestart">⟲ Do início</button>
+        </div>
         <div class="muted small">Navegar: <kbd>→</kbd> <kbd>espaço</kbd> próximo · <kbd>←</kbd> anterior</div>
 
         <h3>Fundo</h3>
-        <div id="mediaList" class="media"></div>
-        <button id="addMedia">+ Adicionar vídeo ou imagem</button>
+        <div id="mediaList" class="media drop-zone"></div>
+        <button id="addMedia">+ Enviar vídeo ou imagem</button>
+        <div class="muted small">Ou arraste arquivos do Finder para cá.</div>
 
         <h3>Texto</h3>
         <label class="field">Tamanho da letra <input id="fontSize" type="range" min="4" max="14" step="0.5" /></label>
@@ -195,19 +204,10 @@
 
     <dialog id="itemDialog" class="small-dialog">
       <form id="itemForm">
-        <h2 id="itemHeading">Aviso</h2>
-        <div data-for="timer">
-          <label class="field">Duração (minutos) <input name="minutes" type="number" min="0" step="0.5" /></label>
-          <label class="field">Mensagem acima do timer <input name="message" /></label>
-          <label class="field">Mensagem ao terminar <input name="endMessage" placeholder="Opcional" /></label>
-        </div>
-        <div data-for="text">
-          <label class="field">Título <span class="muted">(só aparece no roteiro)</span> <input name="title" /></label>
-          <label class="field">
-            Texto <span class="muted">— linha em branco separa os slides (<span id="itemCount">0</span>)</span>
-            <textarea name="text" rows="10"></textarea>
-          </label>
-        </div>
+        <h2>Timer do roteiro</h2>
+        <label class="field">Duração (minutos) <input name="minutes" type="number" min="0" step="0.5" required /></label>
+        <label class="field">Mensagem acima do timer <input name="message" placeholder="Ex.: Estudo da Lição" /></label>
+        <label class="field">Mensagem ao terminar <input name="endMessage" placeholder="Opcional" /></label>
         <div class="ed-actions">
           <span class="spacer"></span>
           <button type="button" data-close>Cancelar</button>
@@ -216,6 +216,33 @@
       </form>
     </dialog>
 
+    <dialog id="slidesDialog">
+      <form id="slidesForm">
+        <h2>Telas</h2>
+        <label class="field">
+          Nome no roteiro
+          <input name="title" placeholder="Ex.: Momento de fidelidade, Sermão, Avisos" />
+        </label>
+        <div id="sdList" class="sd-list drop-zone"></div>
+        <div class="row">
+          <button type="button" id="sdText">+ Texto</button>
+          <button type="button" id="sdMedia">+ Imagem ou vídeo</button>
+          <button type="button" id="sdDoc">+ PowerPoint / Keynote / PDF</button>
+          <span id="sdStatus" class="muted small"></span>
+        </div>
+        <p class="hint">
+          Também dá para arrastar arquivos do Finder para a lista. Num slide de texto, uma linha em branco divide em
+          dois slides. Vídeos tocam com som no telão.
+        </p>
+        <div class="ed-actions">
+          <span class="spacer"></span>
+          <button type="button" data-close>Cancelar</button>
+          <button type="submit" class="primary">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="vendor/pdfjs/pdf.min.js"></script>
     <script src="lib/lyrics.js"></script>
     <script src="lib/screen-view.js"></script>
     <script src="operator.js"></script>

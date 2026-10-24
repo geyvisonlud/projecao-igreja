@@ -627,3 +627,129 @@ dialog.small-dialog textarea {
   resize: vertical;
   font: 14px/1.5 -apple-system, 'Helvetica Neue', Arial, sans-serif;
 }
+
+/* botão + da biblioteca sempre visível (antes só aparecia no hover e passava despercebido) */
+.song-list .add {
+  visibility: visible;
+  opacity: 0.55;
+}
+.song-list li:hover .add {
+  opacity: 1;
+}
+.song-list li {
+  cursor: grab;
+}
+
+/* slides de imagem/vídeo */
+.thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.thumb video,
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+.thumb.missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #ff8a8e;
+}
+.badge-video {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.7);
+}
+.slide.is-media .lbl span:first-child {
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* arrastar arquivos */
+.drop-zone {
+  border-radius: 8px;
+  outline: 2px dashed transparent;
+  outline-offset: 3px;
+  transition: outline-color 0.15s;
+}
+.drop-zone.drag-over {
+  outline-color: var(--accent);
+}
+
+/* editor de telas */
+#slidesDialog {
+  width: min(900px, 94vw);
+}
+.sd-list {
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
+}
+.sd-empty {
+  margin: auto;
+  text-align: center;
+}
+.sd-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 10px;
+  align-items: start;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+}
+.sd-row .n {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+  padding-top: 4px;
+}
+.sd-row textarea {
+  width: 100%;
+  resize: vertical;
+  font: 14px/1.5 -apple-system, 'Helvetica Neue', Arial, sans-serif;
+}
+.sd-media {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.sd-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.pending {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #3a3220;
+  border: 1px solid #6b5a2a;
+}
+.slide .thumb {
+  width: 100%;
+  margin-top: 2px;
+}

@@ -21,6 +21,7 @@ let planId = null; // roteiro aberto
 let selected = null; // { kind: 'song', id } (biblioteca) ou { kind: 'item', id } (roteiro)
 let live = null; // { key, index } do slide que está no telão
 let projectionOpen = false;
+let mediaSeq = 0; // muda a cada vez que um vídeo entra no ar, para recomeçá-lo
 
 // Estado enviado ao telão. A pré-visualização desenha exatamente o mesmo objeto.
 const show = { black: false, hideText: false, background: null, content: null, theme: { ...DEFAULT_THEME } };
@@ -36,6 +37,9 @@ function push() {
   $('#hideBtn').classList.toggle('on', show.hideText);
   $('#liveBadge').classList.toggle('on', projectionOpen);
   $('#liveBadge').textContent = projectionOpen ? 'AO VIVO' : 'PRÉVIA';
+  const video = show.content?.type === 'media' && show.content.mediaType === 'video';
+  $('#videoControls').classList.toggle('hidden', !video);
+  if (video) $('#vPlay').textContent = show.content.playing ? '❚❚ Pausar vídeo' : '▶ Continuar vídeo';
 }
 
 let saveTimer = null;
@@ -58,6 +62,8 @@ const slidesOf = (text) => parse(text, { maxLines: maxLines() }).slides;
 const songById = (id) => songs.find((s) => s.id === id) || null;
 const currentPlan = () => plans.find((p) => p.id === planId) || null;
 const planItem = (id) => currentPlan()?.items.find((i) => i.id === id) || null;
+const mediaById = (id) => media.find((m) => m.id === id) || null;
+const onAirSlide = () => ['text', 'media'].includes(show.content?.type);
 const songMeta = (s) => [s.artist, s.key && `Tom ${s.key}`].filter(Boolean).join(' · ');
 
 function renderAll() {
@@ -68,23 +74,49 @@ function renderAll() {
 
 // ---------- o que está selecionado ----------
 
-// Uma "fonte" é qualquer coisa com slides: música (da biblioteca ou do roteiro) ou aviso.
+// Uma "fonte" é qualquer coisa com slides: música (da biblioteca ou do roteiro) ou item de telas.
 function sourceOf(sel) {
   if (!sel) return null;
   if (sel.kind === 'song') return songSource(songById(sel.id));
   const item = planItem(sel.id);
   if (!item) return null;
   if (item.type === 'song') return songSource(songById(item.songId));
-  if (item.type === 'text') {
+  if (item.type === 'slides') {
+    const n = item.slides.length;
     return {
       key: 'item:' + item.id,
-      title: item.title || 'Aviso',
-      meta: 'Aviso',
-      slides: slidesOf(item.text),
-      edit: () => openItemDialog(item),
+      title: item.title || 'Telas',
+      meta: `Telas · ${n} slide${n === 1 ? '' : 's'}`,
+      slides: item.slides.map(slideView),
+      edit: () => openSlidesDialog(item),
     };
   }
   return null;
+}
+
+// Slide de um item de telas no formato usado pelos cartões e pelo telão.
+function slideView(slide) {
+  if (slide.type === 'text') return { label: '', text: slide.text };
+  const m = mediaById(slide.mediaId);
+  return {
+    label: m ? m.name : '(arquivo removido)',
+    mediaType: slide.type,
+    url: m?.url,
+    loop: !!slide.loop,
+    missing: !m || m.missing,
+  };
+}
+
+function thumb(view) {
+  if (view.missing) return h('div', { className: 'thumb missing', textContent: 'arquivo não encontrado' });
+  return h(
+    'div',
+    { className: 'thumb' },
+    view.mediaType === 'video'
+      ? h('video', { src: view.url + '#t=0.5', muted: true, preload: 'metadata' })
+      : h('img', { src: view.url, loading: 'lazy' }),
+    view.mediaType === 'video' ? h('span', { className: 'badge-video', textContent: '▶ vídeo' + (view.loop ? ' · repete' : '') }) : null,
+  );
 }
 
 function songSource(song) {
@@ -125,11 +157,11 @@ function renderCenter() {
       h(
         'button',
         {
-          className: 'slide' + (live && live.key === src.key && live.index === i ? ' live' : ''),
+          className: 'slide' + (slide.mediaType ? ' is-media' : '') + (live && live.key === src.key && live.index === i ? ' live' : ''),
           onclick: () => goLive(i),
         },
-        h('div', { className: 'lbl' }, h('span', { textContent: slide.label || ' ' }), h('span', { textContent: i + 1 })),
-        h('div', { className: 'txt', textContent: slide.text }),
+        h('div', { className: 'lbl' }, h('span', { textContent: slide.label || '\u00a0' }), h('span', { textContent: i + 1 })),
+        slide.mediaType ? thumb(slide) : h('div', { className: 'txt', textContent: slide.text }),
       ),
     ),
   );
@@ -141,7 +173,10 @@ function goLive(index) {
   index = Math.max(0, Math.min(src.slides.length - 1, index));
   live = { key: src.key, index };
   const slide = src.slides[index];
-  show.content = { type: 'text', text: slide.text, label: slide.label };
+  if (slide.mediaType && slide.missing) return;
+  show.content = slide.mediaType
+    ? { type: 'media', mediaType: slide.mediaType, url: slide.url, loop: slide.loop, playing: true, seq: ++mediaSeq }
+    : { type: 'text', text: slide.text, label: slide.label };
   show.black = false;
   show.hideText = false;
   push();
@@ -161,7 +196,7 @@ function moveItem(delta) {
 function step(delta) {
   const src = sourceOf(selected);
   if (!src) return moveItem(delta);
-  const onAir = live && live.key === src.key && show.content?.type === 'text';
+  const onAir = live && live.key === src.key && onAirSlide();
   if (!onAir) return delta > 0 ? goLive(0) : moveItem(delta);
   const next = live.index + delta;
   if ((next < 0 || next >= src.slides.length) && selected.kind === 'item') return moveItem(delta);
@@ -175,9 +210,12 @@ function localDate(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-function nextSunday() {
+// Próxima data no mesmo dia da semana do roteiro mais recente (sábado, se ainda não houver).
+function nextServiceDate() {
+  const last = [...plans].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+  const weekday = last?.date ? new Date(last.date + 'T12:00').getDay() : 6;
   const d = new Date();
-  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
+  d.setDate(d.getDate() + ((weekday - d.getDay() + 7) % 7));
   return localDate(d);
 }
 
@@ -193,17 +231,29 @@ function itemInfo(item) {
     return s ? { icon: '♪', title: s.title, sub: songMeta(s) } : { icon: '♪', title: '(música excluída)', sub: '' };
   }
   if (item.type === 'timer') return { icon: '⏱', title: item.message || 'Timer', sub: `Timer · ${item.minutes} min` };
-  return { icon: '✎', title: item.title || 'Aviso', sub: (item.text || '').split('\n').find((l) => l.trim()) || '' };
+  const n = item.slides.length;
+  return { icon: '▣', title: item.title || 'Telas', sub: `Telas · ${n} slide${n === 1 ? '' : 's'}` };
 }
 
 function isItemLive(item) {
   if (!live && show.content?.type !== 'timer') return false;
-  if (item.type === 'song') return live?.key === 'song:' + item.songId && show.content?.type === 'text';
-  if (item.type === 'text') return live?.key === 'item:' + item.id && show.content?.type === 'text';
+  if (item.type === 'song') return live?.key === 'song:' + item.songId && onAirSlide();
+  if (item.type === 'slides') return live?.key === 'item:' + item.id && onAirSlide();
   return show.content?.type === 'timer' && timer.itemId === item.id;
 }
 
 let dragIndex = null;
+const isPlanDrag = (e) =>
+  e.dataTransfer.types.includes('application/x-song-id') || e.dataTransfer.types.includes('application/x-plan-index');
+
+// Soltar uma música no espaço vazio do roteiro adiciona no fim.
+$('#planItems').addEventListener('dragover', (e) => isPlanDrag(e) && e.preventDefault());
+$('#planItems').addEventListener('drop', (e) => {
+  const songId = e.dataTransfer.getData('application/x-song-id');
+  if (!songId) return;
+  e.preventDefault();
+  addSongToPlan(songId);
+});
 
 function renderPlan() {
   const sorted = [...plans].sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.name.localeCompare(b.name));
@@ -236,22 +286,32 @@ function renderPlan() {
             .join(' '),
           draggable: true,
           onclick: () => select({ kind: 'item', id: item.id }),
-          ondblclick: () => (item.type === 'song' ? songById(item.songId) && openEditor(songById(item.songId)) : openItemDialog(item)),
+          ondblclick: () => {
+            if (item.type === 'song') songById(item.songId) && openEditor(songById(item.songId));
+            else if (item.type === 'slides') openSlidesDialog(item);
+            else openItemDialog(item);
+          },
           ondragstart: (e) => {
             dragIndex = i;
+            e.dataTransfer.setData('application/x-plan-index', String(i));
             e.dataTransfer.effectAllowed = 'move';
             li.classList.add('dragging');
           },
           ondragend: () => li.classList.remove('dragging'),
           ondragover: (e) => {
+            if (!isPlanDrag(e)) return;
             e.preventDefault();
             li.classList.add('drop');
           },
           ondragleave: () => li.classList.remove('drop'),
           ondrop: (e) => {
+            if (!isPlanDrag(e)) return;
             e.preventDefault();
+            e.stopPropagation();
             li.classList.remove('drop');
-            reorderItem(dragIndex, i);
+            const songId = e.dataTransfer.getData('application/x-song-id');
+            if (songId) addSongToPlan(songId, i);
+            else reorderItem(dragIndex, i);
           },
         },
         h('span', { className: 'n', textContent: i + 1 }),
@@ -291,22 +351,24 @@ function openPlanById(id) {
 
 async function ensurePlan() {
   if (currentPlan()) return currentPlan();
-  const plan = await savePlan({ name: 'Culto', date: nextSunday(), items: [] });
+  const plan = await savePlan({ name: 'Culto', date: nextServiceDate(), items: [] });
   openPlanById(plan.id);
   return plan;
 }
 
-async function addItem(item) {
+async function addItem(item, index) {
   const plan = await ensurePlan();
   const full = { id: uid(), ...item };
-  await savePlan({ ...plan, items: [...plan.items, full] });
+  const items = [...plan.items];
+  items.splice(index ?? items.length, 0, full);
+  await savePlan({ ...plan, items });
   renderPlan();
   return full;
 }
 
-async function addSongToPlan(songId) {
-  await addItem({ type: 'song', songId });
-  $('#planItems').lastElementChild?.scrollIntoView({ block: 'nearest' });
+async function addSongToPlan(songId, index) {
+  await addItem({ type: 'song', songId }, index);
+  if (index == null) $('#planItems').lastElementChild?.scrollIntoView({ block: 'nearest' });
 }
 
 async function removeItem(id) {
@@ -338,7 +400,7 @@ function openPlanDialog(mode) {
   planEditing = mode === 'new' ? null : mode === 'dup' ? { copyOf: plan } : plan;
   $('#planHeading').textContent = { new: 'Novo roteiro', edit: 'Editar roteiro', dup: 'Duplicar roteiro' }[mode];
   planForm.name.value = mode === 'new' ? '' : plan.name;
-  planForm.date.value = mode === 'edit' ? plan.date : nextSunday();
+  planForm.date.value = mode === 'edit' ? plan.date : nextServiceDate();
   planDialog.showModal();
   planForm.name.focus();
   planForm.name.select();
@@ -370,58 +432,236 @@ $('#planDel').onclick = async () => {
   openPlanById(next ? next.id : null);
 };
 
-// Diálogo de item de timer ou aviso.
+// Diálogo do timer do roteiro.
 const itemDialog = $('#itemDialog');
 const itemForm = $('#itemForm');
 let itemEditing = null;
 
 function openItemDialog(item) {
   itemEditing = item;
-  const type = item.type;
-  $('#itemHeading').textContent = type === 'timer' ? 'Timer do roteiro' : 'Aviso';
-  itemDialog.querySelectorAll('[data-for]').forEach((el) => el.classList.toggle('hidden', el.dataset.for !== type));
-  if (type === 'timer') {
-    itemForm.minutes.value = item.minutes;
-    itemForm.message.value = item.message || '';
-    itemForm.endMessage.value = item.endMessage || '';
-  } else {
-    itemForm.title.value = item.title || '';
-    itemForm.text.value = item.text || '';
-    $('#itemCount').textContent = slidesOf(item.text || '').length;
-  }
+  itemForm.minutes.value = item.minutes;
+  itemForm.message.value = item.message || '';
+  itemForm.endMessage.value = item.endMessage || '';
   itemDialog.showModal();
-  (type === 'timer' ? itemForm.minutes : itemForm.title).focus();
+  itemForm.minutes.focus();
 }
-
-itemForm.text.addEventListener('input', () => ($('#itemCount').textContent = slidesOf(itemForm.text.value).length));
 
 itemForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const fields =
-    itemEditing.type === 'timer'
-      ? { minutes: Math.max(0, Number(itemForm.minutes.value) || 0), message: itemForm.message.value, endMessage: itemForm.endMessage.value }
-      : { title: itemForm.title.value.trim(), text: itemForm.text.value };
-  const updated = { ...itemEditing, ...fields };
+  const updated = {
+    ...itemEditing,
+    minutes: Math.max(0, Number(itemForm.minutes.value) || 0),
+    message: itemForm.message.value,
+    endMessage: itemForm.endMessage.value,
+  };
   itemDialog.close();
   if (!updated.id) {
     const added = await addItem(updated);
     return select({ kind: 'item', id: added.id });
   }
-  const plan = currentPlan();
-  await savePlan({ ...plan, items: plan.items.map((i) => (i.id === updated.id ? updated : i)) });
-  if (updated.type === 'timer' && timer.itemId === updated.id && !timerRunning()) {
+  await replaceItem(updated);
+  if (timer.itemId === updated.id && !timerRunning()) {
     timer.itemId = null; // força recarregar a duração editada
     loadTimerItem(updated);
-  }
-  if (live?.key === 'item:' + updated.id && show.content?.type === 'text') {
-    goLive(live.index); // atualiza o aviso que está no ar
   }
   renderAll();
 });
 
+async function replaceItem(updated) {
+  const plan = currentPlan();
+  await savePlan({ ...plan, items: plan.items.map((i) => (i.id === updated.id ? updated : i)) });
+}
+
 $('#addTimer').onclick = () =>
   openItemDialog({ type: 'timer', minutes: 5, message: timer.message, endMessage: timer.endMessage });
-$('#addAviso').onclick = () => openItemDialog({ type: 'text', title: '', text: '' });
+$('#addSlides').onclick = () => openSlidesDialog({ type: 'slides', title: '', slides: [] });
+
+// ---------- editor de telas (textos, imagens, vídeos, PowerPoint) ----------
+
+const slidesDialog = $('#slidesDialog');
+const slidesForm = $('#slidesForm');
+let slidesEditing = null;
+let sdSlides = []; // cópia de trabalho; só vai para o roteiro ao salvar
+
+const DOC_EXT = ['pdf', 'ppt', 'pptx', 'key', 'odp'];
+const MEDIA_EXT = ['mp4', 'mov', 'm4v', 'webm', 'jpg', 'jpeg', 'png', 'gif', 'webp'];
+const extOf = (name) => (name.split('.').pop() || '').toLowerCase();
+
+function openSlidesDialog(item) {
+  slidesEditing = item;
+  sdSlides = item.slides.map((sl) => ({ ...sl }));
+  slidesForm.title.value = item.title || '';
+  $('#sdStatus').textContent = '';
+  renderSdList();
+  slidesDialog.showModal();
+  slidesForm.title.focus();
+}
+
+function moveSd(i, delta) {
+  const j = i + delta;
+  if (j < 0 || j >= sdSlides.length) return;
+  [sdSlides[i], sdSlides[j]] = [sdSlides[j], sdSlides[i]];
+  renderSdList();
+}
+
+function renderSdList() {
+  const list = $('#sdList');
+  if (!sdSlides.length) {
+    list.replaceChildren(
+      h('div', { className: 'sd-empty muted', textContent: 'Nenhum slide ainda. Use os botões abaixo ou arraste arquivos para cá.' }),
+    );
+    return;
+  }
+  list.replaceChildren(
+    ...sdSlides.map((sl, i) => {
+      let body;
+      if (sl.type === 'text') {
+        body = h('textarea', {
+          value: sl.text,
+          rows: Math.min(8, Math.max(2, sl.text.split('\n').length)),
+          placeholder: 'Texto do slide (ex.: versículo, título, aviso)',
+          oninput: (e) => (sl.text = e.target.value),
+        });
+      } else {
+        const view = slideView(sl);
+        body = h(
+          'div',
+          { className: 'sd-media' },
+          thumb(view),
+          h(
+            'div',
+            {},
+            h('div', { textContent: view.label }),
+            sl.type === 'video'
+              ? h(
+                  'label',
+                  { className: 'check small' },
+                  h('input', { type: 'checkbox', checked: !!sl.loop, onchange: (e) => (sl.loop = e.target.checked) }),
+                  'Repetir em loop',
+                )
+              : null,
+          ),
+        );
+      }
+      return h(
+        'div',
+        { className: 'sd-row' },
+        h('span', { className: 'n', textContent: i + 1 }),
+        body,
+        h(
+          'div',
+          { className: 'sd-tools' },
+          h('button', { type: 'button', className: 'mini', textContent: '↑', title: 'Subir', onclick: () => moveSd(i, -1) }),
+          h('button', { type: 'button', className: 'mini', textContent: '↓', title: 'Descer', onclick: () => moveSd(i, 1) }),
+          h('button', {
+            type: 'button',
+            className: 'mini danger',
+            textContent: '✕',
+            title: 'Remover',
+            onclick: () => {
+              sdSlides.splice(i, 1);
+              renderSdList();
+            },
+          }),
+        ),
+      );
+    }),
+  );
+}
+
+function addMediaSlides(items) {
+  for (const m of items) sdSlides.push({ id: uid(), type: m.type, mediaId: m.id, loop: false });
+  renderSdList();
+  $('#sdList').lastElementChild?.scrollIntoView({ block: 'nearest' });
+}
+
+// Converte cada página do PDF numa imagem de 1920 px de largura e guarda na biblioteca.
+async function importDoc(doc) {
+  if (!doc) return;
+  const status = $('#sdStatus');
+  if (doc.error) {
+    status.textContent = '';
+    return alert(doc.error);
+  }
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({ data: doc.data }).promise;
+    const images = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      status.textContent = `Importando ${doc.name}: página ${p} de ${pdf.numPages}…`;
+      const page = await pdf.getPage(p);
+      const viewport = page.getViewport({ scale: 1920 / page.getViewport({ scale: 1 }).width });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      images.push({ name: `${doc.name} · ${p}`, data: canvas.toDataURL('image/jpeg', 0.9) });
+    }
+    const added = await api.saveImages(images);
+    media = await api.listMedia();
+    addMediaSlides(added);
+    status.textContent = `${added.length} páginas importadas de "${doc.name}".`;
+  } catch (e) {
+    status.textContent = '';
+    alert('Não consegui ler o arquivo: ' + e.message);
+  }
+}
+
+async function importFiles(files) {
+  const paths = files.map((f) => api.pathForFile(f)).filter(Boolean);
+  const mediaPaths = paths.filter((p) => MEDIA_EXT.includes(extOf(p)));
+  const docPaths = paths.filter((p) => DOC_EXT.includes(extOf(p)));
+  if (mediaPaths.length) {
+    $('#sdStatus').textContent = 'Copiando arquivos…';
+    const added = await api.importMedia(mediaPaths, 'slide');
+    media = await api.listMedia();
+    addMediaSlides(added);
+    $('#sdStatus').textContent = '';
+  }
+  for (const p of docPaths) {
+    $('#sdStatus').textContent = 'Convertendo apresentação…';
+    await importDoc(await api.readDoc(p));
+  }
+}
+
+$('#sdText').onclick = () => {
+  sdSlides.push({ id: uid(), type: 'text', text: '' });
+  renderSdList();
+  $('#sdList').lastElementChild?.querySelector('textarea')?.focus();
+};
+$('#sdMedia').onclick = async () => {
+  const added = await api.pickMedia('slide');
+  media = await api.listMedia();
+  addMediaSlides(added);
+};
+$('#sdDoc').onclick = async () => {
+  $('#sdStatus').textContent = 'Abrindo apresentação…';
+  const doc = await api.pickDoc();
+  $('#sdStatus').textContent = '';
+  await importDoc(doc);
+};
+
+slidesForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  // Texto com linha em branco vira vários slides; textos vazios são descartados.
+  const slides = sdSlides.flatMap((sl) =>
+    sl.type !== 'text'
+      ? [sl]
+      : sl.text
+          .split(/\n[ \t]*\n/)
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .map((text, k) => ({ id: k ? uid() : sl.id, type: 'text', text })),
+  );
+  const updated = { ...slidesEditing, title: slidesForm.title.value.trim(), slides };
+  slidesDialog.close();
+  if (!updated.id) {
+    const added = await addItem(updated);
+    return select({ kind: 'item', id: added.id });
+  }
+  await replaceItem(updated);
+  renderAll();
+});
 
 document.querySelectorAll('dialog [data-close]').forEach((b) => (b.onclick = () => b.closest('dialog').close()));
 
@@ -445,6 +685,11 @@ function renderSongList() {
             .join(' '),
           onclick: () => select({ kind: 'song', id: s.id }),
           ondblclick: () => openEditor(s),
+          draggable: true,
+          ondragstart: (e) => {
+            e.dataTransfer.setData('application/x-song-id', s.id);
+            e.dataTransfer.effectAllowed = 'copy';
+          },
         },
         h('div', { className: 'body' }, h('div', { className: 't', textContent: s.title }), songMeta(s) ? h('div', { className: 's', textContent: songMeta(s) }) : null),
         h('button', {
@@ -479,7 +724,7 @@ function renderEditorPreview() {
       h(
         'div',
         { className: 'slide' },
-        h('div', { className: 'lbl' }, h('span', { textContent: s.label || ' ' }), h('span', { textContent: i + 1 })),
+        h('div', { className: 'lbl' }, h('span', { textContent: s.label || '\u00a0' }), h('span', { textContent: i + 1 })),
         h('div', { className: 'txt', textContent: s.text }),
       ),
     ),
@@ -540,6 +785,7 @@ $('#editSong').onclick = () => sourceOf(selected)?.edit();
 
 function renderMedia() {
   const activeId = settings.backgroundId || null;
+  const backgrounds = media.filter((m) => m.role === 'background');
   const none = h(
     'button',
     { className: 'item' + (!activeId ? ' active' : ''), onclick: () => setBackground(null) },
@@ -547,7 +793,7 @@ function renderMedia() {
   );
   $('#mediaList').replaceChildren(
     none,
-    ...media.map((m) =>
+    ...backgrounds.map((m) =>
       h(
         'button',
         {
@@ -559,17 +805,20 @@ function renderMedia() {
           ? h('video', { src: m.url + '#t=1', muted: true, preload: 'metadata' })
           : h('img', { src: m.url }),
         h('span', { className: 'name', textContent: m.name }),
-        h('span', {
-          className: 'rm',
-          textContent: '✕',
-          title: 'Remover da lista',
-          onclick: async (e) => {
-            e.stopPropagation();
-            if (settings.backgroundId === m.id) setBackground(null);
-            media = await api.removeMedia(m.id);
-            renderMedia();
-          },
-        }),
+        m.builtin
+          ? null
+          : h('span', {
+              className: 'rm',
+              textContent: '✕',
+              title: 'Excluir este fundo',
+              onclick: async (e) => {
+                e.stopPropagation();
+                if (!confirm(`Excluir o fundo "${m.name}"?`)) return;
+                if (settings.backgroundId === m.id) setBackground(null);
+                media = await api.removeMedia(m.id);
+                renderMedia();
+              },
+            }),
       ),
     ),
   );
@@ -584,9 +833,52 @@ function setBackground(m) {
 }
 
 $('#addMedia').onclick = async () => {
-  media = await api.addMedia();
+  const added = await api.pickMedia('background');
+  media = await api.listMedia();
   renderMedia();
+  if (added.length) setBackground(added[0]);
 };
+
+// Arrastar arquivos do Finder: no painel de fundos viram fundos; na lista de telas, slides.
+function dropZone(el, onFiles) {
+  el.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    el.classList.add('drag-over');
+  });
+  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('drop', (e) => {
+    el.classList.remove('drag-over');
+    if (!e.dataTransfer.files.length) return;
+    e.preventDefault();
+    onFiles([...e.dataTransfer.files]);
+  });
+}
+
+dropZone($('#mediaList'), async (files) => {
+  const paths = files.map((f) => api.pathForFile(f)).filter((p) => MEDIA_EXT.includes(extOf(p)));
+  if (!paths.length) return;
+  const added = await api.importMedia(paths, 'background');
+  media = await api.listMedia();
+  renderMedia();
+  if (added.length) setBackground(added[0]);
+});
+dropZone($('#sdList'), importFiles);
+// Soltar um arquivo fora das áreas certas não deve abrir o arquivo na janela.
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => e.preventDefault());
+
+$('#vPlay').onclick = () => {
+  if (show.content?.type !== 'media') return;
+  show.content.playing = !show.content.playing;
+  push();
+};
+$('#vRestart').onclick = () => {
+  if (show.content?.type !== 'media') return;
+  show.content = { ...show.content, playing: true, seq: ++mediaSeq };
+  push();
+};
+
 
 // ---------- aparência do texto ----------
 
@@ -676,6 +968,7 @@ function syncTimer() {
     push();
   }
   $('#tStart').textContent = timerRunning() ? '❚❚ Pausar' : '▶ Iniciar';
+  renderTimerDisplay();
   $('#tMsg').value = timer.message;
   $('#tEnd').value = timer.endMessage;
 }
@@ -687,9 +980,19 @@ function setDuration(ms) {
 }
 
 // Selecionar um timer do roteiro carrega a configuração dele, sem iniciar.
-// Se esse mesmo timer já está correndo, não mexe.
-function loadTimerItem(item) {
+// Se algum timer está correndo, não mexe: oferece o botão "Carregar" para trocar quando quiser.
+let pendingTimerItem = null;
+
+function loadTimerItem(item, force = false) {
   if (timer.itemId === item.id && timerRunning()) return;
+  if (timerRunning() && !force) {
+    pendingTimerItem = item;
+    $('#tPending').classList.remove('hidden');
+    $('#tPendingText').textContent = `Outro timer está correndo. Carregar "${item.message || 'Timer'}" (${item.minutes} min)?`;
+    return;
+  }
+  pendingTimerItem = null;
+  $('#tPending').classList.add('hidden');
   timer.itemId = item.id;
   timer.message = item.message || '';
   timer.endMessage = item.endMessage || '';
@@ -697,6 +1000,12 @@ function loadTimerItem(item) {
   $('#tSec').value = Math.round((item.minutes % 1) * 60);
   setDuration(item.minutes * 60000);
 }
+
+$('#tLoad').onclick = () => {
+  if (!pendingTimerItem) return;
+  loadTimerItem(pendingTimerItem, true);
+  renderPlan();
+};
 
 document.querySelectorAll('.presets button').forEach((b) => {
   b.onclick = () => {
@@ -751,11 +1060,12 @@ $('#tProject').onclick = () => {
   renderAll();
 };
 
-setInterval(() => {
+function renderTimerDisplay() {
   const ms = remaining(timer);
   $('#tDisplay').textContent = fmt(ms);
   $('#tDisplay').classList.toggle('warn', ms > 0 && ms <= 60000);
-}, 250);
+}
+setInterval(renderTimerDisplay, 250);
 
 // ---------- teclado ----------
 
@@ -793,9 +1103,24 @@ document.addEventListener('keydown', (e) => {
   show.theme = { ...DEFAULT_THEME, ...settings.theme };
   timer.message = settings.timerMessage ?? timer.message;
   timer.endMessage = settings.timerEndMessage ?? '';
+  // Na primeira vez, já começa com um fundo embutido escuro (letra branca sobre fundo claro não se lê).
+  if (settings.backgroundId === undefined) {
+    const builtin = media.filter((m) => m.builtin);
+    settings.backgroundId = (builtin.find((m) => m.name === 'Roxo suave') || builtin[0])?.id || null;
+  }
   const bg = media.find((m) => m.id === settings.backgroundId && !m.missing);
   show.background = bg ? { type: bg.type, url: bg.url } : null;
   if (!bg) settings.backgroundId = null;
+  // Roteiros da versão anterior tinham "avisos" só de texto; viram itens de telas.
+  for (const plan of plans) {
+    if (!plan.items.some((i) => i.type === 'text')) continue;
+    plan.items = plan.items.map((i) =>
+      i.type !== 'text'
+        ? i
+        : { id: i.id, type: 'slides', title: i.title, slides: slidesOf(i.text).map((sl) => ({ id: uid(), type: 'text', text: sl.text })) },
+    );
+    await savePlan(plan);
+  }
   // Abre o último roteiro usado ou, se não houver, o de data mais recente.
   planId = plans.some((p) => p.id === settings.planId)
     ? settings.planId

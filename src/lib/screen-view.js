@@ -1,4 +1,4 @@
-// Desenha o conteúdo do telão (fundo, letra ou timer, tela preta) num elemento.
+// Desenha o conteúdo do telão (fundo, letra, timer, imagem/vídeo, tela preta) num elemento.
 // A mesma função alimenta a janela de projeção e a pré-visualização do operador,
 // então o que o operador vê é exatamente o que vai para o telão.
 (function (root) {
@@ -19,14 +19,16 @@
     return t.endAt != null ? t.endAt - Date.now() : t.remaining;
   }
 
-  function create(root) {
+  // audio: só a janela de projeção toca o som dos vídeos; a prévia do operador fica muda.
+  function create(root, { audio = false } = {}) {
     root.classList.add('screen');
     root.innerHTML =
-      '<div class="bg"></div><div class="dim"></div>' +
+      '<div class="bg"></div><div class="dim"></div><div class="fg"></div>' +
       '<div class="content"><div class="top"></div><div class="main"></div></div>' +
       '<div class="black"></div>';
     const bg = root.querySelector('.bg');
     const dim = root.querySelector('.dim');
+    const fg = root.querySelector('.fg');
     const content = root.querySelector('.content');
     const top = root.querySelector('.top');
     const main = root.querySelector('.main');
@@ -37,6 +39,8 @@
     let contentKey = null;
     let fadeTimer = null;
     let tick = null;
+    let fgKey = null;
+    let fgVideo = null;
 
     function setBackground(b) {
       const key = b ? `${b.type}|${b.url || b.color}` : 'none';
@@ -58,6 +62,31 @@
       requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add('on')));
       const old = [...bg.children].filter((c) => c !== layer);
       setTimeout(() => old.forEach((c) => c.remove()), 800);
+    }
+
+    // Imagem ou vídeo em tela cheia, por cima do fundo. Um novo `seq` recomeça o vídeo.
+    function setForeground(media, visible) {
+      const key = media ? `${media.url}|${media.seq || 0}` : null;
+      if (key !== fgKey) {
+        fgKey = key;
+        fg.replaceChildren();
+        fgVideo = null;
+        if (media && media.mediaType === 'video') {
+          fgVideo = document.createElement('video');
+          Object.assign(fgVideo, { src: media.url, muted: !audio, playsInline: true });
+          fg.append(fgVideo);
+        } else if (media) {
+          const img = document.createElement('img');
+          img.src = media.url;
+          fg.append(img);
+        }
+      }
+      fg.classList.toggle('on', !!media && visible);
+      if (fgVideo) {
+        fgVideo.loop = !!media.loop;
+        if (media.playing && visible) fgVideo.play().catch(() => {});
+        else fgVideo.pause();
+      }
     }
 
     // Reduz a fonte até o texto caber na área útil da tela.
@@ -110,13 +139,15 @@
       const hasMedia = state.background && state.background.type !== 'color';
       dim.style.opacity = hasMedia ? String(state.theme?.dim ?? 0.35) : '0';
       black.classList.toggle('on', !!state.black);
+      const media = state.content && state.content.type === 'media' ? state.content : null;
+      setForeground(media, !state.hideText);
 
       const c = state.hideText ? null : state.content;
       clearInterval(tick);
       tick = c && c.type === 'timer' ? setInterval(draw, 250) : null;
 
       // Troca de letra faz um fade rápido; atualizações do mesmo conteúdo redesenham direto.
-      const key = c ? (c.type === 'timer' ? 'timer' : 't:' + c.text) : '';
+      const key = !c || c.type === 'media' ? '' : c.type === 'timer' ? 'timer' : 't:' + c.text;
       if (key !== contentKey) {
         contentKey = key;
         content.classList.add('fade');

@@ -1,6 +1,6 @@
 {
   "name": "projecao-igreja",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Software de apresentação para igreja: letras de músicas, timer e fundos em vídeo",
   "main": "main.js",
   "private": true,
@@ -16,7 +16,8 @@
   "build": {
     "appId": "com.igreja.projecao",
     "productName": "Projeção Igreja",
-    "files": ["main.js", "preload.js", "src/**/*"],
+    "files": ["main.js", "preload.js", "src/**/*", "assets/**/*"],
+    "asarUnpack": ["assets/**/*"],
     "mac": {
       "target": "dmg",
       "category": "public.app-category.productivity"
