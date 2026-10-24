@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' file:; img-src 'self' file: data:; media-src 'self' file:; style-src 'self' file: 'unsafe-inline'"
+    />
+    <title>Projeção Igreja</title>
+    <link rel="stylesheet" href="screen.css" />
+    <link rel="stylesheet" href="operator.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">Projeção Igreja</div>
+      <nav class="tabs">
+        <button data-tab="songs" class="active">Músicas</button>
+        <button data-tab="timer">Timer</button>
+      </nav>
+      <div class="spacer"></div>
+      <label class="inline muted">Telão <select id="displaySelect"></select></label>
+      <button id="projBtn" class="primary">Abrir projeção</button>
+    </header>
+
+    <main class="layout">
+      <aside class="library">
+        <div class="lib-head">
+          <input id="search" type="search" placeholder="Buscar título ou trecho da letra…" />
+          <button id="newSong" class="primary" title="Nova música (⌘N)">+ Nova</button>
+        </div>
+        <ul id="songList" class="song-list"></ul>
+        <div id="songCount" class="muted small lib-foot"></div>
+      </aside>
+
+      <section class="center">
+        <div id="songsPanel" class="panel">
+          <div id="songHead" class="song-head hidden">
+            <div>
+              <h2 id="songTitle"></h2>
+              <div id="songMeta" class="muted"></div>
+            </div>
+            <button id="editSong">Editar</button>
+          </div>
+          <div id="slides" class="slides"></div>
+          <div id="emptyState" class="empty">
+            <p><strong>Nenhuma música selecionada.</strong></p>
+            <p class="muted">Clique em <em>+ Nova</em> e cole a letra. Linha em branco separa os slides.</p>
+          </div>
+        </div>
+
+        <div id="timerPanel" class="panel hidden">
+          <div class="timer-panel">
+            <div class="big-timer" id="tDisplay">05:00</div>
+            <div class="row presets">
+              <span class="muted">Duração:</span>
+              <button data-min="3">3 min</button>
+              <button data-min="5">5 min</button>
+              <button data-min="10">10 min</button>
+              <button data-min="15">15 min</button>
+              <button data-min="30">30 min</button>
+            </div>
+            <div class="row">
+              <input id="tMin" type="number" min="0" value="5" class="num" /> min
+              <input id="tSec" type="number" min="0" max="59" value="0" class="num" /> s
+              <button id="tSetDur">Definir</button>
+              <span class="sep"></span>
+              <span class="muted">ou até as</span>
+              <input id="tAt" type="time" />
+              <button id="tSetAt">Definir</button>
+            </div>
+            <div class="row">
+              <button id="tStart" class="primary">▶ Iniciar</button>
+              <button id="tMinus">−1 min</button>
+              <button id="tPlus">+1 min</button>
+              <button id="tReset">Zerar</button>
+            </div>
+            <label class="field">Mensagem acima do timer <input id="tMsg" /></label>
+            <label class="field">
+              Mensagem ao terminar <span class="muted">(opcional — senão fica 00:00)</span>
+              <input id="tEnd" placeholder="Ex.: Sejam bem-vindos!" />
+            </label>
+            <div class="row">
+              <button id="tProject" class="primary big">Projetar timer no telão</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="live">
+        <div class="preview-wrap">
+          <div id="preview"></div>
+          <div id="liveBadge" class="badge">AO VIVO</div>
+        </div>
+        <div class="live-controls">
+          <button id="blackBtn">Tela preta <kbd>B</kbd></button>
+          <button id="hideBtn">Ocultar letra <kbd>C</kbd></button>
+        </div>
+        <div class="muted small">Navegar: <kbd>→</kbd> <kbd>espaço</kbd> próximo · <kbd>←</kbd> anterior</div>
+
+        <h3>Fundo</h3>
+        <div id="mediaList" class="media"></div>
+        <button id="addMedia">+ Adicionar vídeo ou imagem</button>
+
+        <h3>Texto</h3>
+        <label class="field">Tamanho da letra <input id="fontSize" type="range" min="4" max="14" step="0.5" /></label>
+        <label class="field">Escurecer fundo <input id="dim" type="range" min="0" max="0.8" step="0.05" /></label>
+        <label class="field">
+          Linhas por slide
+          <select id="maxLines">
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
+        </label>
+        <label class="check"><input id="uppercase" type="checkbox" /> Letras maiúsculas</label>
+      </aside>
+    </main>
+
+    <dialog id="editor">
+      <form id="editorForm">
+        <h2 id="edHeading">Nova música</h2>
+        <div class="ed-grid">
+          <div class="ed-fields">
+            <label class="field">Título <input name="title" required /></label>
+            <div class="row2">
+              <label class="field">Artista / ministério <input name="artist" /></label>
+              <label class="field">Tom <input name="key" placeholder="Ex.: G" /></label>
+            </div>
+            <label class="field">Tags <span class="muted">(separe por vírgula)</span> <input name="tags" placeholder="adoração, ceia" /></label>
+            <label class="field grow">
+              Letra
+              <textarea name="lyrics" placeholder="Cole a letra aqui…"></textarea>
+            </label>
+            <p class="hint">
+              Linha em branco = novo slide. Use <code>[Verso 1]</code>, <code>[Refrão]</code>, <code>[Ponte]</code> para
+              nomear as partes. Uma linha só com <code>[Refrão]</code> repete o refrão. Cifras coladas de sites são
+              removidas automaticamente.
+            </p>
+          </div>
+          <div class="ed-preview">
+            <h3>Slides (<span id="edCount">0</span>)</h3>
+            <div id="edSlides"></div>
+          </div>
+        </div>
+        <div class="ed-actions">
+          <button type="button" id="edDelete" class="danger">Excluir</button>
+          <span class="spacer"></span>
+          <button type="button" id="edCancel">Cancelar</button>
+          <button type="submit" class="primary">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="lib/lyrics.js"></script>
+    <script src="lib/screen-view.js"></script>
+    <script src="operator.js"></script>
+  </body>
+</html>
