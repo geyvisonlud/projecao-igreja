@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' file:; script-src 'self' file: blob:; worker-src 'self' file: blob:; img-src 'self' file: data:; media-src 'self' file: blob: mediastream:; style-src 'self' file: 'unsafe-inline'; connect-src 'self' file: https://*.microsoft.com wss://*.microsoft.com https://*.azure.com wss://*.azure.com"
+    />
+    <title>Projeção Igreja</title>
+    <link rel="stylesheet" href="screen.css" />
+    <link rel="stylesheet" href="operator.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- Barra de ferramentas unificada (os botões de janela do Mac ficam à esquerda) -->
+      <header class="toolbar">
+        <div class="tb-left">
+          <button id="sidebarToggle" class="tb-icon" title="Mostrar ou ocultar a barra lateral" data-icon="sidebar"></button>
+          <button id="planMenu" class="tb-plan" title="Trocar de roteiro">
+            <span class="tb-plan-text">
+              <span id="planTitle" class="tb-plan-name">Nenhum roteiro</span>
+              <span id="planDate" class="tb-plan-date"></span>
+            </span>
+            <span data-icon="chevronDown" class="tb-chevron"></span>
+          </button>
+          <button id="saveBtn" class="save-state" title="Salvar o roteiro (⌘S) — ele também é salvo sozinho a cada mudança">
+            <span data-icon="check"></span><span id="saveLabel">Salvo</span>
+          </button>
+          <button id="playBtn" class="play-service" title="Iniciar o culto: liga o Palco e o Retorno e projeta o primeiro item do roteiro">
+            <span data-icon="play"></span><span id="playLabel">Iniciar culto</span>
+          </button>
+        </div>
+        <div class="tb-center">
+          <div class="segmented" role="group" aria-label="Telão">
+            <button id="blackBtn" title="Tela preta (B)"><span data-icon="moon"></span>Tela preta</button>
+            <button id="hideBtn" title="Esconder a letra e deixar só o fundo (C)"><span data-icon="eyeSlash"></span>Limpar</button>
+          </div>
+          <button id="captionBtn" class="output" title="Ligar ou desligar a tradução simultânea (T)">
+            <span class="tally"></span><span data-icon="captions"></span>Tradução
+          </button>
+        </div>
+        <div class="tb-right">
+          <button id="outPalco" class="output" data-role="palco" title="Escolher a tela do Palco">
+            <span class="tally"></span>Palco<span data-icon="chevronDown" class="tb-chevron"></span>
+          </button>
+          <button id="outRetorno" class="output" data-role="retorno" title="Escolher a tela de Retorno">
+            <span class="tally"></span>Retorno<span data-icon="chevronDown" class="tb-chevron"></span>
+          </button>
+          <button id="settingsBtn" class="tb-icon" title="Ajustes (⌘,)" data-icon="gear"></button>
+        </div>
+      </header>
+
+      <!-- Barra lateral -->
+      <aside class="sidebar">
+        <div class="sb-scroll">
+          <div class="sb-heading">
+            <span>Roteiro</span>
+            <button id="addItemBtn" class="sb-add" title="Adicionar ao roteiro" data-icon="plus"></button>
+          </div>
+          <ol id="planItems" class="sb-list plan-items"></ol>
+          <div id="planEmpty" class="sb-empty"></div>
+
+          <div class="sb-heading"><span>Biblioteca</span></div>
+          <ul class="sb-list">
+            <li class="nav" data-view="songs"><span data-icon="music"></span>Músicas<span id="songBadge" class="sb-count"></span></li>
+            <li class="nav" data-view="bible"><span data-icon="book"></span>Bíblia</li>
+            <li class="nav" data-view="media"><span data-icon="photo"></span>Mídia<span id="mediaBadge" class="sb-count"></span></li>
+            <li class="nav" data-view="timer"><span data-icon="timer"></span>Timer</li>
+          </ul>
+        </div>
+      </aside>
+
+      <!-- Conteúdo -->
+      <main class="pane">
+        <section id="viewSlides" class="view">
+          <div class="view-head">
+            <button id="backBtn" class="back hidden"><span data-icon="chevronLeft"></span>Músicas</button>
+            <div class="vh-title">
+              <h1 id="songTitle"></h1>
+              <div id="songMeta" class="vh-sub"></div>
+            </div>
+            <div class="vh-actions">
+              <button id="addToPlan" class="btn">Adicionar ao roteiro</button>
+              <button id="editSong" class="btn">Editar</button>
+            </div>
+          </div>
+          <div id="slides" class="slides"></div>
+          <div id="emptyState" class="empty-state">
+            <div class="es-icon" data-icon="rectangles"></div>
+            <h2>Nada selecionado</h2>
+            <p>Escolha um item do roteiro ou abra <a href="#" data-goto="songs">Músicas</a> na barra lateral.</p>
+          </div>
+        </section>
+
+        <section id="viewSongs" class="view hidden">
+          <div class="view-head">
+            <div class="vh-title">
+              <h1>Músicas</h1>
+              <div id="songCount" class="vh-sub"></div>
+            </div>
+            <div class="vh-actions">
+              <label class="search"><span data-icon="search"></span><input id="search" type="search" placeholder="Título ou trecho da letra" /></label>
+              <button id="newSong" class="btn primary" title="Nova música (⌘N)">Nova música</button>
+            </div>
+          </div>
+          <div id="fillBanner" class="banner hidden">
+            <span id="fillText"></span>
+            <button id="fillCancel" class="btn">Cancelar</button>
+          </div>
+          <ul id="songList" class="table-list"></ul>
+          <div id="songsEmpty" class="empty-state hidden">
+            <div class="es-icon" data-icon="music"></div>
+            <h2>Nenhuma música ainda</h2>
+            <p>Clique em <strong>Nova música</strong> e cole a letra. Linha em branco separa os slides.</p>
+          </div>
+        </section>
+
+        <section id="viewBible" class="view hidden">
+          <div class="view-head">
+            <div class="vh-title">
+              <h1 id="bibleTitle">Bíblia</h1>
+              <div id="bibleSub" class="vh-sub"></div>
+            </div>
+            <div class="vh-actions">
+              <select id="bibleVersion" title="Tradução"></select>
+              <select id="bibleAlt" title="Segunda tradução, mostrada junto (leitura bilíngue)"></select>
+              <button id="bibleAdd" class="btn" disabled>Adicionar ao roteiro</button>
+            </div>
+          </div>
+          <div class="bible-bar">
+            <label class="search big"
+              ><span data-icon="search"></span><input id="bibleQuery" type="search" placeholder="Jo 3:16-18, Salmos 23 ou uma palavra"
+            /></label>
+            <button id="biblePrev" class="btn" disabled><span data-icon="chevronLeft"></span>Capítulo anterior</button>
+            <button id="bibleNext" class="btn" disabled>Próximo capítulo</button>
+          </div>
+          <div id="bibleSlides" class="slides"></div>
+          <ul id="bibleResults" class="table-list results hidden"></ul>
+          <div id="bibleEmpty" class="empty-state">
+            <div class="es-icon" data-icon="book"></div>
+            <h2>Digite uma referência</h2>
+            <p>Por exemplo <strong>Jo 3:16</strong>, <strong>1 Co 13:4-7</strong> ou <strong>Salmos 23</strong>. Ou uma palavra, como <strong>graça</strong>.</p>
+          </div>
+          <p id="bibleLicense" class="view-foot"></p>
+        </section>
+
+        <section id="viewMedia" class="view hidden">
+          <div class="view-head">
+            <div class="vh-title">
+              <h1>Mídia</h1>
+              <div id="mediaCount" class="vh-sub"></div>
+            </div>
+            <div class="vh-actions">
+              <div class="segmented small" id="mediaFilter" role="group" aria-label="Filtrar">
+                <button data-filter="all" class="on">Tudo</button>
+                <button data-filter="image">Imagens</button>
+                <button data-filter="video">Vídeos</button>
+                <button data-filter="audio">Áudios</button>
+              </div>
+              <button id="uploadMedia" class="btn primary">Enviar arquivos</button>
+            </div>
+          </div>
+          <div id="mediaGrid" class="media-grid drop-zone"></div>
+          <div id="mediaEmpty" class="empty-state hidden">
+            <div class="es-icon" data-icon="photo"></div>
+            <h2>Arraste imagens, vídeos e áudios para cá</h2>
+            <p>Ou clique em <strong>Enviar arquivos</strong>. Eles ficam guardados na pasta de dados do app.</p>
+          </div>
+          <p class="view-foot">Duplo clique projeta no Palco (ou toca o áudio). Clique com o botão direito para mais opções.</p>
+        </section>
+
+        <section id="viewTimer" class="view hidden">
+          <div class="view-head">
+            <div class="vh-title"><h1>Timer</h1></div>
+          </div>
+          <div class="timer-panel">
+            <div id="tPending" class="banner hidden">
+              <span id="tPendingText"></span>
+              <button id="tLoad" class="btn primary">Carregar</button>
+            </div>
+            <div class="big-timer" id="tDisplay">05:00</div>
+            <div class="row">
+              <button id="tStart" class="btn primary wide">Iniciar</button>
+              <button id="tMinus" class="btn">−1 min</button>
+              <button id="tPlus" class="btn">+1 min</button>
+              <button id="tReset" class="btn">Zerar</button>
+            </div>
+            <div class="group">
+              <div class="group-row">
+                <span class="gr-label">Duração</span>
+                <div class="segmented small presets">
+                  <button data-min="3">3</button><button data-min="5">5</button><button data-min="10">10</button
+                  ><button data-min="15">15</button><button data-min="30">30</button><button data-min="35">35</button>
+                </div>
+                <span class="muted">min</span>
+              </div>
+              <div class="group-row">
+                <span class="gr-label">Personalizado</span>
+                <input id="tMin" type="number" min="0" value="5" class="num" /> min
+                <input id="tSec" type="number" min="0" max="59" value="0" class="num" /> s
+                <button id="tSetDur" class="btn">Definir</button>
+              </div>
+              <div class="group-row">
+                <span class="gr-label">Até o horário</span>
+                <input id="tAt" type="time" />
+                <button id="tSetAt" class="btn">Definir</button>
+              </div>
+              <div class="group-row">
+                <span class="gr-label">Mensagem acima</span>
+                <input id="tMsg" class="grow" />
+              </div>
+              <div class="group-row">
+                <span class="gr-label">Ao terminar</span>
+                <input id="tEnd" class="grow" placeholder="Opcional — senão fica 00:00" />
+              </div>
+            </div>
+            <div class="row">
+              <button id="tProject" class="btn primary wide">Mostrar timer no Palco</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="viewAudio" class="view hidden">
+          <div class="view-head">
+            <div class="vh-title">
+              <h1 id="audioTitle"></h1>
+              <div class="vh-sub">Áudio · sai pelo som do Mac, não aparece no telão</div>
+            </div>
+          </div>
+          <div class="audio-card">
+            <button id="audioBigPlay" class="play-big" data-icon="play" title="Tocar"></button>
+            <div class="ac-body">
+              <input id="audioBigSeek" type="range" min="0" max="1000" value="0" />
+              <div class="ac-times"><span id="audioBigTime">0:00</span><span id="audioBigDur">0:00</span></div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Inspetor: prévias das telas de saída e ajustes rápidos -->
+      <aside class="inspector">
+        <section class="ins-block">
+          <div class="ins-head">
+            <span>Palco</span>
+            <span id="palcoBadge" class="state">Desligado</span>
+          </div>
+          <div id="palcoMonitor" class="monitor"><div id="preview"></div></div>
+          <div id="videoControls" class="ins-row hidden">
+            <button id="vPlay" class="btn">Pausar vídeo</button>
+            <button id="vRestart" class="btn">Do início</button>
+          </div>
+        </section>
+        <section class="ins-block">
+          <div class="ins-head">
+            <span>Retorno</span>
+            <span id="retornoBadge" class="state">Desligado</span>
+          </div>
+          <div id="retornoMonitor" class="monitor"><div id="stagePreview"></div></div>
+        </section>
+
+        <details class="ins-block" open>
+          <summary>Fundo</summary>
+          <div id="mediaList" class="bg-grid drop-zone"></div>
+          <button id="addMedia" class="btn link">Enviar fundo…</button>
+        </details>
+
+        <details class="ins-block" id="captionPanel">
+          <summary>Tradução simultânea</summary>
+          <div class="segmented small full" id="capDirection" role="group" aria-label="Direção">
+            <button data-dir="pt-en" class="on">Português → Inglês</button>
+            <button data-dir="en-pt">Inglês → Português</button>
+          </div>
+          <label class="ins-field">Microfone <select id="capMic"><option value="">Padrão do Mac</option></select></label>
+          <div class="ins-row">
+            <button id="capStart" class="btn primary">Iniciar tradução</button>
+          </div>
+          <div id="capStatus" class="cap-status">Desligada.</div>
+          <div id="capLive" class="cap-live hidden">
+            <div id="capHeard" class="cap-heard"></div>
+            <div id="capSaid" class="cap-said"></div>
+          </div>
+          <div class="ins-sub">Aparência da legenda</div>
+          <label class="ins-field">Tamanho <input id="capSize" type="range" min="3" max="9" step="0.5" /></label>
+          <label class="ins-field">Linhas <select id="capLines"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+          <label class="ins-field">Cor do texto <input id="capColor" type="color" /></label>
+          <label class="ins-field">Cor do fundo <input id="capBg" type="color" /></label>
+          <label class="ins-field">Fundo <input id="capBgOpacity" type="range" min="0" max="1" step="0.05" /></label>
+        </details>
+
+        <details class="ins-block">
+          <summary>Logo nas músicas</summary>
+          <label class="ins-check"><input id="wmEnabled" type="checkbox" /> Mostrar o logo nas músicas</label>
+          <div class="wm-row">
+            <div class="wm-thumb"><img id="wmThumb" alt="Logo" /></div>
+            <div class="wm-actions">
+              <button id="wmChange" class="btn link">Trocar imagem…</button>
+              <button id="wmReset" class="btn link">Usar o logo On The Way</button>
+            </div>
+          </div>
+          <label class="ins-field">Tamanho <input id="wmSize" type="range" min="5" max="30" step="1" /></label>
+          <label class="ins-field">Opacidade <input id="wmOpacity" type="range" min="0.05" max="1" step="0.05" /></label>
+        </details>
+
+        <details class="ins-block">
+          <summary>Texto</summary>
+          <label class="ins-field">Tamanho <input id="fontSize" type="range" min="4" max="14" step="0.5" /></label>
+          <label class="ins-field">Escurecer fundo <input id="dim" type="range" min="0" max="0.8" step="0.05" /></label>
+          <label class="ins-field"
+            >Linhas por slide
+            <select id="maxLines">
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+            </select>
+          </label>
+          <label class="ins-check"><input id="uppercase" type="checkbox" /> Letras maiúsculas</label>
+        </details>
+
+        <div class="ins-spacer"></div>
+
+        <section id="player" class="player hidden">
+          <div class="pl-top">
+            <span data-icon="waveform" class="pl-icon"></span>
+            <span id="plName" class="pl-name"></span>
+            <button id="plStop" class="tb-icon small" title="Parar" data-icon="xmark"></button>
+          </div>
+          <input id="plSeek" type="range" min="0" max="1000" value="0" />
+          <div class="pl-bottom">
+            <span id="plTime" class="pl-time">0:00</span>
+            <button id="plPlay" class="pl-play" data-icon="pause" title="Pausar"></button>
+            <span id="plDur" class="pl-time">0:00</span>
+          </div>
+          <label class="pl-vol"><span data-icon="speaker"></span><input id="plVol" type="range" min="0" max="1" step="0.01" value="1" /></label>
+        </section>
+      </aside>
+    </div>
+
+    <audio id="audio" preload="auto"></audio>
+
+    <!-- Editor de música -->
+    <dialog id="editor" class="sheet large">
+      <form id="editorForm">
+        <h2 id="edHeading">Nova música</h2>
+        <div class="ed-grid">
+          <div class="ed-fields">
+            <label class="field">Título <input name="title" required /></label>
+            <div class="row2">
+              <label class="field">Artista ou ministério <input name="artist" /></label>
+              <label class="field">Tom <input name="key" placeholder="Ex.: G" /></label>
+            </div>
+            <label class="field">Tags <input name="tags" placeholder="adoração, ceia" /></label>
+            <label class="field grow">Letra <textarea name="lyrics" placeholder="Cole a letra aqui"></textarea></label>
+            <p class="hint">
+              Linha em branco separa os slides. Use <code>[Verso 1]</code>, <code>[Refrão]</code>, <code>[Ponte]</code> para
+              nomear as partes; uma linha só com <code>[Refrão]</code> repete o refrão. Cifras coladas de sites são
+              removidas.
+            </p>
+          </div>
+          <div class="ed-preview">
+            <h3>Slides · <span id="edCount">0</span></h3>
+            <div id="edSlides"></div>
+          </div>
+        </div>
+        <div class="sheet-actions">
+          <button type="button" id="edDelete" class="btn danger">Excluir música</button>
+          <span class="spacer"></span>
+          <button type="button" id="edCancel" class="btn">Cancelar</button>
+          <button type="submit" class="btn primary">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Roteiro: criar, editar, duplicar -->
+    <dialog id="planDialog" class="sheet">
+      <form id="planForm">
+        <h2 id="planHeading">Novo roteiro</h2>
+        <label class="field">Nome <input name="name" required placeholder="Ex.: Culto de sábado" /></label>
+        <label class="field">Data <input name="date" type="date" required /></label>
+        <label class="field" id="planTemplateField">
+          Começar a partir de
+          <select name="template"></select>
+        </label>
+        <div class="sheet-actions">
+          <span class="spacer"></span>
+          <button type="button" class="btn" data-close>Cancelar</button>
+          <button type="submit" class="btn primary">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Salvar roteiro como modelo -->
+    <dialog id="templateDialog" class="sheet">
+      <form id="templateForm">
+        <h2>Salvar como modelo</h2>
+        <label class="field">Nome do modelo <input name="name" required placeholder="Ex.: Culto de sábado" /></label>
+        <label class="ins-check">
+          <input name="blankSongs" type="checkbox" checked /> Deixar as músicas em branco para escolher a cada semana
+        </label>
+        <p class="hint" id="templateSummary"></p>
+        <div class="sheet-actions">
+          <span class="spacer"></span>
+          <button type="button" class="btn" data-close>Cancelar</button>
+          <button type="submit" class="btn primary">Salvar modelo</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Timer do roteiro -->
+    <dialog id="itemDialog" class="sheet">
+      <form id="itemForm">
+        <h2>Timer do roteiro</h2>
+        <label class="field">Duração em minutos <input name="minutes" type="number" min="0" step="0.5" required /></label>
+        <label class="field">Mensagem acima do timer <input name="message" placeholder="Ex.: Estudo da Lição" /></label>
+        <label class="field">Mensagem ao terminar <input name="endMessage" placeholder="Opcional" /></label>
+        <div class="sheet-actions">
+          <span class="spacer"></span>
+          <button type="button" class="btn" data-close>Cancelar</button>
+          <button type="submit" class="btn primary">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Editor de telas -->
+    <dialog id="slidesDialog" class="sheet large">
+      <form id="slidesForm">
+        <h2>Telas</h2>
+        <label class="field">Nome no roteiro <input name="title" placeholder="Ex.: Momento de fidelidade, Sermão, Avisos" /></label>
+        <div id="sdList" class="sd-list drop-zone"></div>
+        <div class="row">
+          <button type="button" id="sdText" class="btn">Texto</button>
+          <button type="button" id="sdLibrary" class="btn">Da biblioteca…</button>
+          <button type="button" id="sdMedia" class="btn">Arquivo do Mac…</button>
+          <button type="button" id="sdDoc" class="btn">PowerPoint, Keynote ou PDF…</button>
+          <span id="sdStatus" class="muted small"></span>
+        </div>
+        <p class="hint">
+          Arraste arquivos do Finder para a lista. Num slide de texto, uma linha em branco divide em dois slides. Vídeos
+          tocam com som no Palco.
+        </p>
+        <div class="sheet-actions">
+          <span class="spacer"></span>
+          <button type="button" class="btn" data-close>Cancelar</button>
+          <button type="submit" class="btn primary">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Escolher da biblioteca -->
+    <dialog id="pickerDialog" class="sheet large">
+      <form id="pickerForm">
+        <h2>Escolher da biblioteca</h2>
+        <div id="pickerGrid" class="media-grid picker"></div>
+        <div class="sheet-actions">
+          <span id="pickerCount" class="muted small"></span>
+          <span class="spacer"></span>
+          <button type="button" class="btn" data-close>Cancelar</button>
+          <button type="submit" class="btn primary">Adicionar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Ajustes -->
+    <dialog id="settingsDialog" class="sheet">
+      <form id="settingsForm">
+        <h2>Ajustes</h2>
+        <h3 class="sheet-section">Onde guardar músicas, roteiros e arquivos</h3>
+        <div class="choice-list" id="storageChoices">
+          <label class="choice">
+            <input type="radio" name="storage" value="local" />
+            <span class="ch-body"><strong>Neste Mac</strong><span class="ch-sub" id="stLocal"></span></span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="storage" value="drive" />
+            <span class="ch-body"
+              ><strong>Google Drive</strong><span class="ch-sub" id="stDrive"></span
+              ><a href="#" id="stDriveGet" class="ch-link hidden">Baixar o Google Drive para computador</a></span
+            >
+          </label>
+          <label class="choice">
+            <input type="radio" name="storage" value="custom" />
+            <span class="ch-body"><strong>Outra pasta</strong><span class="ch-sub" id="stCustom">Escolher…</span></span>
+          </label>
+        </div>
+        <p class="hint">
+          Com o Google Drive, tudo vai para a pasta <em>Projeção Igreja</em> no seu Drive e fica igual em todos os Macs
+          da igreja. Use o app em um Mac por vez para não haver conflito.
+        </p>
+        <h3 class="sheet-section">Tradução simultânea (Microsoft Azure Speech)</h3>
+        <div class="choice-list">
+          <div class="group-row">
+            <span class="gr-label">Região</span>
+            <input id="azRegion" class="grow" list="azRegions" placeholder="ex.: brazilsouth" />
+            <datalist id="azRegions">
+              <option value="brazilsouth"></option>
+              <option value="eastus"></option>
+              <option value="eastus2"></option>
+              <option value="westus2"></option>
+              <option value="westeurope"></option>
+              <option value="northeurope"></option>
+            </datalist>
+          </div>
+          <div class="group-row">
+            <span class="gr-label">Chave</span>
+            <input id="azKey" class="grow" type="password" autocomplete="off" placeholder="Cole a chave (Key 1)" />
+          </div>
+        </div>
+        <p class="hint" id="azHint">
+          No portal do Azure, crie um recurso <em>Speech</em> (há um plano gratuito de 5 horas por mês) e copie a
+          <em>Chave</em> e a <em>Região</em> em “Chaves e ponto de extremidade”. A chave fica guardada no chaveiro do Mac.
+        </p>
+        <div class="sheet-actions">
+          <button type="button" id="stReveal" class="btn">Mostrar no Finder</button>
+          <span class="spacer"></span>
+          <button type="button" class="btn" data-close>Cancelar</button>
+          <button type="submit" class="btn primary">Aplicar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="vendor/pdfjs/pdf.min.js"></script>
+    <script src="vendor/azure-speech/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
+    <script src="lib/lyrics.js"></script>
+    <script src="lib/bible.js"></script>
+    <script src="lib/screen-view.js"></script>
+    <script src="lib/stage-view.js"></script>
+    <script src="lib/icons.js"></script>
+    <script src="operator.js"></script>
+  </body>
+</html>

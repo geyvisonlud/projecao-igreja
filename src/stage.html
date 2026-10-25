@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' file:; img-src 'self' file: data:; media-src 'self' file:; style-src 'self' file: 'unsafe-inline'"
+    />
+    <title>Retorno</title>
+    <link rel="stylesheet" href="screen.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        cursor: none;
+        overflow: hidden;
+      }
+      #stage {
+        position: fixed;
+        inset: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <script src="lib/screen-view.js"></script>
+    <script src="lib/stage-view.js"></script>
+    <script src="stage.js"></script>
+  </body>
+</html>

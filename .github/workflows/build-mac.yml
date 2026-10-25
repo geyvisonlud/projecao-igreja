@@ -1,0 +1,29 @@
+# Gera o instalador para Mac (.dmg) a cada push, para testar sem precisar de Terminal.
+# O arquivo fica em Actions → (execução) → Artifacts.
+name: Gerar app para Mac
+
+on:
+  push:
+    branches: [main, claude/primeira-versao]
+  workflow_dispatch:
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      # Sem certificado da Apple: o app sai com assinatura local (ad-hoc).
+      - run: npx electron-builder --mac dmg --arm64 --x64 --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projecao-Igreja-Mac
+          path: dist/*.dmg
+          retention-days: 30
