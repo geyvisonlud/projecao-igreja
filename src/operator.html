@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' file:; img-src 'self' file: data:; media-src 'self' file:; style-src 'self' file: 'unsafe-inline'"
+      content="default-src 'self' file:; script-src 'self' file: blob:; worker-src 'self' file: blob:; img-src 'self' file: data:; media-src 'self' file: blob: mediastream:; style-src 'self' file: 'unsafe-inline'; connect-src 'self' file: https://*.microsoft.com wss://*.microsoft.com https://*.azure.com wss://*.azure.com"
     />
     <title>Projeção Igreja</title>
     <link rel="stylesheet" href="screen.css" />
@@ -29,6 +29,9 @@
             <button id="blackBtn" title="Tela preta (B)"><span data-icon="moon"></span>Tela preta</button>
             <button id="hideBtn" title="Esconder a letra e deixar só o fundo (C)"><span data-icon="eyeSlash"></span>Limpar</button>
           </div>
+          <button id="captionBtn" class="output" title="Ligar ou desligar a tradução simultânea (T)">
+            <span class="tally"></span><span data-icon="captions"></span>Tradução
+          </button>
         </div>
         <div class="tb-right">
           <button id="outPalco" class="output" data-role="palco" title="Escolher a tela do Palco">
@@ -221,6 +224,43 @@
           <button id="addMedia" class="btn link">Enviar fundo…</button>
         </details>
 
+        <details class="ins-block" id="captionPanel">
+          <summary>Tradução simultânea</summary>
+          <div class="segmented small full" id="capDirection" role="group" aria-label="Direção">
+            <button data-dir="pt-en" class="on">Português → Inglês</button>
+            <button data-dir="en-pt">Inglês → Português</button>
+          </div>
+          <label class="ins-field">Microfone <select id="capMic"><option value="">Padrão do Mac</option></select></label>
+          <div class="ins-row">
+            <button id="capStart" class="btn primary">Iniciar tradução</button>
+          </div>
+          <div id="capStatus" class="cap-status">Desligada.</div>
+          <div id="capLive" class="cap-live hidden">
+            <div id="capHeard" class="cap-heard"></div>
+            <div id="capSaid" class="cap-said"></div>
+          </div>
+          <div class="ins-sub">Aparência da legenda</div>
+          <label class="ins-field">Tamanho <input id="capSize" type="range" min="3" max="9" step="0.5" /></label>
+          <label class="ins-field">Linhas <select id="capLines"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+          <label class="ins-field">Cor do texto <input id="capColor" type="color" /></label>
+          <label class="ins-field">Cor do fundo <input id="capBg" type="color" /></label>
+          <label class="ins-field">Fundo <input id="capBgOpacity" type="range" min="0" max="1" step="0.05" /></label>
+        </details>
+
+        <details class="ins-block">
+          <summary>Logo nas músicas</summary>
+          <label class="ins-check"><input id="wmEnabled" type="checkbox" /> Mostrar o logo nas músicas</label>
+          <div class="wm-row">
+            <div class="wm-thumb"><img id="wmThumb" alt="Logo" /></div>
+            <div class="wm-actions">
+              <button id="wmChange" class="btn link">Trocar imagem…</button>
+              <button id="wmReset" class="btn link">Usar o logo On The Way</button>
+            </div>
+          </div>
+          <label class="ins-field">Tamanho <input id="wmSize" type="range" min="5" max="30" step="1" /></label>
+          <label class="ins-field">Opacidade <input id="wmOpacity" type="range" min="0.05" max="1" step="0.05" /></label>
+        </details>
+
         <details class="ins-block">
           <summary>Texto</summary>
           <label class="ins-field">Tamanho <input id="fontSize" type="range" min="4" max="14" step="0.5" /></label>
@@ -386,6 +426,29 @@
           Com o Google Drive, tudo vai para a pasta <em>Projeção Igreja</em> no seu Drive e fica igual em todos os Macs
           da igreja. Use o app em um Mac por vez para não haver conflito.
         </p>
+        <h3 class="sheet-section">Tradução simultânea (Microsoft Azure Speech)</h3>
+        <div class="choice-list">
+          <div class="group-row">
+            <span class="gr-label">Região</span>
+            <input id="azRegion" class="grow" list="azRegions" placeholder="ex.: brazilsouth" />
+            <datalist id="azRegions">
+              <option value="brazilsouth"></option>
+              <option value="eastus"></option>
+              <option value="eastus2"></option>
+              <option value="westus2"></option>
+              <option value="westeurope"></option>
+              <option value="northeurope"></option>
+            </datalist>
+          </div>
+          <div class="group-row">
+            <span class="gr-label">Chave</span>
+            <input id="azKey" class="grow" type="password" autocomplete="off" placeholder="Cole a chave (Key 1)" />
+          </div>
+        </div>
+        <p class="hint" id="azHint">
+          No portal do Azure, crie um recurso <em>Speech</em> (há um plano gratuito de 5 horas por mês) e copie a
+          <em>Chave</em> e a <em>Região</em> em “Chaves e ponto de extremidade”. A chave fica guardada no chaveiro do Mac.
+        </p>
         <div class="sheet-actions">
           <button type="button" id="stReveal" class="btn">Mostrar no Finder</button>
           <span class="spacer"></span>
@@ -396,6 +459,7 @@
     </dialog>
 
     <script src="vendor/pdfjs/pdf.min.js"></script>
+    <script src="vendor/azure-speech/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
     <script src="lib/lyrics.js"></script>
     <script src="lib/screen-view.js"></script>
     <script src="lib/stage-view.js"></script>

@@ -24,6 +24,8 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const clock = (sec) => (Number.isFinite(sec) ? `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}` : '0:00');
 
 const DEFAULT_THEME = { fontSize: 8, dim: 0.35, uppercase: false };
+const DEFAULT_WATERMARK = { enabled: true, mediaId: null, size: 12, opacity: 0.35 };
+const DEFAULT_CAPTION = { direction: 'pt-en', micId: '', size: 5, lines: 2, color: '#ffd60a', background: '#000000', backgroundOpacity: 0.85 };
 const MEDIA_LABEL = { image: 'Imagem', video: 'Vídeo', audio: 'Áudio' };
 
 let songs = [];
@@ -38,6 +40,7 @@ let outputs = { palco: false, retorno: false };
 let mediaSeq = 0; // muda a cada vez que um vídeo entra no ar, para recomeçá-lo
 let mediaFilter = 'all';
 let selectedMediaId = null;
+let defaultLogoUrl = null;
 
 // Estado enviado às saídas. As prévias desenham exatamente o mesmo objeto.
 const show = { black: false, hideText: false, background: null, content: null, theme: { ...DEFAULT_THEME } };
@@ -49,7 +52,7 @@ const preview = ScreenView.create($('#preview'));
 const stagePreview = StageView.create($('#stagePreview'));
 
 function push() {
-  const state = JSON.parse(JSON.stringify({ ...show, timer, stage: stageInfo() }));
+  const state = JSON.parse(JSON.stringify({ ...show, timer, stage: stageInfo(), watermark: watermarkState(), caption: captionState() }));
   api.updateShow(state);
   preview.update(state);
   stagePreview.update(state);
@@ -62,6 +65,7 @@ function push() {
     badge.classList.toggle('on', outputs[role]);
   }
   $('#palcoMonitor').classList.toggle('on-air', outputs.palco);
+  $('#captionBtn').classList.toggle('on', captions.running);
   const video = show.content?.type === 'media' && show.content.mediaType === 'video';
   $('#videoControls').classList.toggle('hidden', !video);
   if (video) $('#vPlay').textContent = show.content.playing ? 'Pausar vídeo' : 'Continuar vídeo';
@@ -1201,7 +1205,7 @@ $('#hideBtn').onclick = () => {
   push();
 };
 
-for (const btn of $$('.output')) {
+for (const btn of $$('.output[data-role]')) {
   btn.onclick = async () => {
     const role = btn.dataset.role;
     const displays = await api.listDisplays();
@@ -1225,6 +1229,231 @@ api.onOutputStatus((status) => {
   outputs = status;
   push();
 });
+
+// ---------- logo (marca d'água) nas músicas ----------
+
+const wmSettings = () => ({ ...DEFAULT_WATERMARK, ...settings.watermark });
+
+function watermarkUrl() {
+  const m = wmSettings().mediaId && mediaById(wmSettings().mediaId);
+  return m && !m.missing ? m.url : defaultLogoUrl;
+}
+
+// Só aparece quando a letra de uma música está no Palco.
+function watermarkState() {
+  const w = wmSettings();
+  if (!w.enabled || show.content?.type !== 'text' || !live?.key.startsWith('song:')) return null;
+  return { url: watermarkUrl(), size: w.size, opacity: w.opacity };
+}
+
+function setWatermark(changes) {
+  settings.watermark = { ...wmSettings(), ...changes };
+  saveSettings();
+  bindWatermark();
+  push();
+}
+
+function bindWatermark() {
+  const w = wmSettings();
+  $('#wmEnabled').checked = w.enabled;
+  $('#wmSize').value = w.size;
+  $('#wmOpacity').value = w.opacity;
+  $('#wmThumb').src = watermarkUrl() || '';
+  $('#wmReset').classList.toggle('hidden', !w.mediaId);
+}
+
+$('#wmEnabled').onchange = (e) => setWatermark({ enabled: e.target.checked });
+$('#wmSize').oninput = (e) => setWatermark({ size: Number(e.target.value) });
+$('#wmOpacity').oninput = (e) => setWatermark({ opacity: Number(e.target.value) });
+$('#wmReset').onclick = () => setWatermark({ mediaId: null });
+$('#wmChange').onclick = async () => {
+  const [added] = await api.pickMedia('library', ['image']);
+  if (!added) return;
+  media = await api.listMedia();
+  renderMediaGrid();
+  setWatermark({ mediaId: added.id });
+};
+
+// ---------- tradução simultânea (legenda no Palco) ----------
+// Microsoft Azure Speech: ouve o microfone do Mac, transcreve e traduz enquanto a pessoa fala.
+// A chave fica no processo principal; aqui só usamos um token temporário.
+
+const capSettings = () => ({ ...DEFAULT_CAPTION, ...settings.caption });
+
+const captions = {
+  running: false,
+  starting: false,
+  rec: null,
+  target: 'en',
+  finals: [],
+  partial: '',
+  heard: '',
+  tokenTimer: null,
+
+  // O que vai para a faixa: as duas últimas frases traduzidas e a que está sendo falada agora.
+  text() {
+    return [...this.finals.slice(-2), this.partial].filter(Boolean).join(' ');
+  },
+
+  feed(kind, translated, original) {
+    if (kind === 'partial') this.partial = translated;
+    else {
+      if (translated) this.finals = [...this.finals, translated].slice(-4);
+      this.partial = '';
+    }
+    this.heard = original || this.heard;
+    renderCaptionPanel();
+    schedulePush();
+  },
+
+  async start() {
+    if (this.running || this.starting) return;
+    this.starting = true;
+    capStatus('Conectando ao Azure…');
+    try {
+      if (typeof SpeechSDK === 'undefined') throw new Error('O componente de voz não carregou.');
+      if (!(await api.askMicrophone())) {
+        throw new Error('Sem permissão para usar o microfone. Libere em Ajustes do Sistema → Privacidade e Segurança → Microfone.');
+      }
+      const tok = await api.azureToken();
+      if (tok.error) throw new Error(tok.error);
+      const c = capSettings();
+      const [from, to] = c.direction === 'pt-en' ? ['pt-BR', 'en'] : ['en-US', 'pt'];
+      const cfg = SpeechSDK.SpeechTranslationConfig.fromAuthorizationToken(tok.token, tok.region);
+      cfg.speechRecognitionLanguage = from;
+      cfg.addTargetLanguage(to);
+      // Evita que palavras já mostradas fiquem trocando enquanto a frase não termina.
+      cfg.setProperty(SpeechSDK.PropertyId.SpeechServiceResponse_TranslationRequestStablePartialResult, 'true');
+      const audioCfg = c.micId ? SpeechSDK.AudioConfig.fromMicrophoneInput(c.micId) : SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+      const rec = new SpeechSDK.TranslationRecognizer(cfg, audioCfg);
+      rec.recognizing = (_s, e) => this.feed('partial', e.result.translations.get(to) || '', e.result.text);
+      rec.recognized = (_s, e) => {
+        if (e.result.reason === SpeechSDK.ResultReason.TranslatedSpeech) this.feed('final', e.result.translations.get(to) || '', e.result.text);
+      };
+      rec.canceled = (_s, e) => {
+        if (e.reason === SpeechSDK.CancellationReason.Error) this.fail(e.errorDetails);
+      };
+      await new Promise((resolve, reject) => rec.startContinuousRecognitionAsync(resolve, reject));
+      Object.assign(this, { rec, target: to, running: true, finals: [], partial: '', heard: '' });
+      // O token vale 10 minutos; renova antes de vencer.
+      this.tokenTimer = setInterval(async () => {
+        const t = await api.azureToken();
+        if (t.token && this.rec) this.rec.authorizationToken = t.token;
+      }, 9 * 60 * 1000);
+      capStatus(c.direction === 'pt-en' ? 'Ouvindo em português e legendando em inglês.' : 'Ouvindo em inglês e legendando em português.');
+      refreshMics();
+    } catch (e) {
+      this.fail(e?.message || String(e));
+    } finally {
+      this.starting = false;
+      renderCaptionPanel();
+      push();
+    }
+  },
+
+  stop(message = 'Desligada.') {
+    clearInterval(this.tokenTimer);
+    const rec = this.rec;
+    if (rec) rec.stopContinuousRecognitionAsync(() => rec.close(), () => rec.close());
+    Object.assign(this, { rec: null, running: false, finals: [], partial: '', heard: '' });
+    capStatus(message);
+    renderCaptionPanel();
+    push();
+  },
+
+  fail(details) {
+    const msg = /1006|websocket|connection|network/i.test(details || '')
+      ? 'Não consegui conectar ao Azure. Confira a internet e a região em Ajustes.'
+      : details || 'Erro desconhecido.';
+    this.stop();
+    capStatus('Erro: ' + msg, true);
+  },
+
+  toggle() {
+    if (this.running) this.stop();
+    else this.start();
+  },
+};
+
+function capStatus(text, error = false) {
+  $('#capStatus').textContent = text;
+  $('#capStatus').classList.toggle('error', error);
+}
+
+function captionState() {
+  if (!captions.running) return null;
+  const c = capSettings();
+  return {
+    text: captions.text(),
+    style: { size: c.size, lines: c.lines, color: c.color, background: c.background, backgroundOpacity: c.backgroundOpacity },
+  };
+}
+
+// As legendas chegam várias vezes por segundo; o telão é atualizado no máximo a cada 120 ms.
+let pushQueued = false;
+function schedulePush() {
+  if (pushQueued) return;
+  pushQueued = true;
+  setTimeout(() => {
+    pushQueued = false;
+    push();
+  }, 120);
+}
+
+function renderCaptionPanel() {
+  const c = capSettings();
+  $('#capStart').textContent = captions.starting ? 'Conectando…' : captions.running ? 'Parar tradução' : 'Iniciar tradução';
+  $('#capStart').classList.toggle('primary', !captions.running);
+  $('#capStart').disabled = captions.starting;
+  $$('#capDirection button').forEach((b) => b.classList.toggle('on', b.dataset.dir === c.direction));
+  $('#capLive').classList.toggle('hidden', !captions.running);
+  $('#capHeard').textContent = captions.heard || '…';
+  $('#capSaid').textContent = captions.text() || '…';
+}
+
+function setCaption(changes, restart = false) {
+  settings.caption = { ...capSettings(), ...changes };
+  saveSettings();
+  bindCaption();
+  push();
+  if (restart && captions.running) {
+    captions.stop();
+    captions.start();
+  }
+}
+
+function bindCaption() {
+  const c = capSettings();
+  $('#capSize').value = c.size;
+  $('#capLines').value = String(c.lines);
+  $('#capColor').value = c.color;
+  $('#capBg').value = c.background;
+  $('#capBgOpacity').value = c.backgroundOpacity;
+  $('#capMic').value = c.micId;
+  renderCaptionPanel();
+}
+
+async function refreshMics() {
+  try {
+    const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default');
+    $('#capMic').replaceChildren(
+      h('option', { value: '', textContent: 'Padrão do Mac' }),
+      ...devices.map((d, i) => h('option', { value: d.deviceId, textContent: d.label || `Microfone ${i + 1}` })),
+    );
+    $('#capMic').value = capSettings().micId;
+  } catch {}
+}
+navigator.mediaDevices?.addEventListener?.('devicechange', refreshMics);
+
+$('#captionBtn').onclick = () => captions.toggle();
+$('#capStart').onclick = () => captions.toggle();
+$$('#capDirection button').forEach((b) => (b.onclick = () => setCaption({ direction: b.dataset.dir }, true)));
+$('#capMic').onchange = (e) => setCaption({ micId: e.target.value }, true);
+$('#capSize').oninput = (e) => setCaption({ size: Number(e.target.value) });
+$('#capLines').onchange = (e) => setCaption({ lines: Number(e.target.value) });
+$('#capColor').oninput = (e) => setCaption({ color: e.target.value });
+$('#capBg').oninput = (e) => setCaption({ background: e.target.value });
+$('#capBgOpacity').oninput = (e) => setCaption({ backgroundOpacity: Number(e.target.value) });
 
 // ---------- áudio ----------
 
@@ -1431,8 +1660,14 @@ async function openSettings() {
   settingsForm.querySelector('input[value="drive"]').disabled = !storage.drive;
   $('#stCustom').textContent = pretty(customFolder) || 'Escolher…';
   settingsForm.querySelector(`input[value="${storage.mode}"]`).checked = true;
+  const az = await api.getAzure();
+  $('#azRegion').value = az.region;
+  $('#azKey').value = '';
+  $('#azKey').placeholder = az.hasKey ? 'Chave guardada — cole outra para trocar' : 'Cole a chave (Key 1)';
+  azureLoaded = az;
   settingsDialog.showModal();
 }
+let azureLoaded = null;
 
 settingsForm.querySelector('input[value="custom"]').addEventListener('click', async () => {
   const folder = await api.pickStorageFolder();
@@ -1452,6 +1687,9 @@ $('#settingsBtn').onclick = openSettings;
 
 settingsForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  const region = $('#azRegion').value.trim().toLowerCase();
+  const key = $('#azKey').value.trim();
+  if (key || region !== azureLoaded.region) await api.setAzure({ region, key: key || undefined });
   const mode = settingsForm.storage.value;
   const target = mode === 'custom' ? customFolder : mode;
   const targetPath = mode === 'local' ? storage.local : mode === 'drive' ? storage.drive : customFolder;
@@ -1504,6 +1742,7 @@ document.addEventListener('keydown', (e) => {
   else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) step(-1);
   else if (key === 'b') $('#blackBtn').click();
   else if (key === 'c' || e.key === 'Escape') $('#hideBtn').click();
+  else if (key === 't') captions.toggle();
   else return;
   e.preventDefault();
 });
@@ -1511,6 +1750,7 @@ document.addEventListener('keydown', (e) => {
 // ---------- início ----------
 
 (async function init() {
+  defaultLogoUrl = await api.defaultLogo();
   const accent = await api.accentColor();
   if (accent) document.documentElement.style.setProperty('--accent', accent);
 
@@ -1542,6 +1782,9 @@ document.addEventListener('keydown', (e) => {
 
   applySidebar();
   bindTheme();
+  bindWatermark();
+  bindCaption();
+  refreshMics();
   renderBackgrounds();
   syncTimer();
   showView('slides');

@@ -31,6 +31,11 @@ contextBridge.exposeInMainWorld('api', {
   revealStorage: () => ipcRenderer.invoke('storage:reveal'),
   openExternal: (url) => ipcRenderer.invoke('open:external', url),
   accentColor: () => ipcRenderer.invoke('system:accent'),
+  defaultLogo: () => ipcRenderer.invoke('assets:logo'),
+  getAzure: () => ipcRenderer.invoke('azure:get'),
+  setAzure: (cfg) => ipcRenderer.invoke('azure:set', cfg),
+  azureToken: () => ipcRenderer.invoke('azure:token'),
+  askMicrophone: () => ipcRenderer.invoke('mic:ask'),
   popupMenu: (items) => ipcRenderer.invoke('menu:popup', items),
 
   listDisplays: () => ipcRenderer.invoke('displays:list'),

@@ -1422,3 +1422,86 @@ dialog.sheet h2 {
   font-size: 12px;
   margin-top: 2px;
 }
+
+/* Tradução simultânea */
+.segmented.full {
+  display: flex;
+  margin-bottom: 8px;
+}
+.segmented.full button {
+  flex: 1;
+  justify-content: center;
+}
+#captionBtn {
+  margin-left: 8px;
+}
+#captionBtn .icon {
+  width: 15px;
+  height: 15px;
+}
+.cap-status {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--label-2);
+}
+.cap-status.error {
+  color: var(--tally);
+}
+.cap-live {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r);
+  background: #000;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.cap-heard {
+  color: #8e8e93;
+}
+.cap-said {
+  color: #ffd60a;
+  font-weight: 600;
+  margin-top: 3px;
+}
+.ins-sub {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--label-2);
+}
+input[type='color'] {
+  width: 44px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  box-shadow: var(--shadow);
+}
+
+/* Logo (marca d'água) */
+.wm-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0 4px;
+}
+.wm-thumb {
+  width: 96px;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-sm);
+  background: #222;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.wm-thumb img {
+  max-width: 80%;
+  max-height: 70%;
+}
+.wm-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}

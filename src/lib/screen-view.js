@@ -1,4 +1,4 @@
-// Desenha o conteúdo do telão (fundo, letra, timer, imagem/vídeo, tela preta) num elemento.
+// Desenha o conteúdo do telão (fundo, letra, timer, imagem/vídeo, logo, legenda, tela preta) num elemento.
 // A mesma função alimenta a janela de projeção e a pré-visualização do operador,
 // então o que o operador vê é exatamente o que vai para o telão.
 (function (root) {
@@ -25,7 +25,9 @@
     root.innerHTML =
       '<div class="bg"></div><div class="dim"></div><div class="fg"></div>' +
       '<div class="content"><div class="top"></div><div class="main"></div></div>' +
-      '<div class="black"></div>';
+      '<img class="wm" alt="" /><div class="black"></div>' +
+      // A legenda fica acima da tela preta: a tradução continua visível mesmo com o telão apagado.
+      '<div class="caption"><div class="cap-box"><span class="cap-text"></span></div></div>';
     const bg = root.querySelector('.bg');
     const dim = root.querySelector('.dim');
     const fg = root.querySelector('.fg');
@@ -33,6 +35,10 @@
     const top = root.querySelector('.top');
     const main = root.querySelector('.main');
     const black = root.querySelector('.black');
+    const wm = root.querySelector('.wm');
+    const caption = root.querySelector('.caption');
+    const capBox = root.querySelector('.cap-box');
+    const capText = root.querySelector('.cap-text');
 
     let state = null;
     let bgKey = null;
@@ -102,7 +108,28 @@
       }
     }
 
+    const rgba = (hex, a) => {
+      const n = parseInt((hex || '#000000').slice(1), 16);
+      return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+    };
+
+    // Legenda da tradução: só as últimas linhas cabem na faixa; o começo do texto fica cortado em cima.
+    function drawCaption() {
+      const cap = state && state.caption;
+      const visible = !!cap && !!cap.text;
+      caption.classList.toggle('on', visible);
+      if (!cap) return;
+      const st = cap.style || {};
+      const px = (root.clientHeight * (st.size || 5)) / 100;
+      capText.textContent = cap.text || '';
+      capBox.style.fontSize = px + 'px';
+      capBox.style.maxHeight = px * 1.3 * (st.lines || 2) + px * 0.5 + 'px';
+      capBox.style.color = st.color || '#ffd60a';
+      capBox.style.background = rgba(st.background || '#000000', st.backgroundOpacity ?? 0.85);
+    }
+
     function draw() {
+      drawCaption();
       const c = state && !state.hideText ? state.content : null;
       const theme = (state && state.theme) || {};
       const h = root.clientHeight;
@@ -139,6 +166,15 @@
       const hasMedia = state.background && state.background.type !== 'color';
       dim.style.opacity = hasMedia ? String(state.theme?.dim ?? 0.35) : '0';
       black.classList.toggle('on', !!state.black);
+      // Marca d'água (logo) no canto superior direito.
+      const mark = state.watermark;
+      wm.classList.toggle('on', !!mark && !state.hideText);
+      if (mark) {
+        if (wm.getAttribute('src') !== mark.url) wm.src = mark.url;
+        wm.style.opacity = String(mark.opacity);
+        wm.style.width = mark.size + '%';
+      }
+      drawCaption();
       const media = state.content && state.content.type === 'media' ? state.content : null;
       setForeground(media, !state.hideText);
 

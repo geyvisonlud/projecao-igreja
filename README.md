@@ -1,6 +1,6 @@
 # Projeção Igreja
 
-Software de apresentação para o telão da igreja (macOS). Versão 0.4: **banco de músicas**,
+Software de apresentação para o telão da igreja (macOS). Versão 0.5: **banco de músicas**,
 **roteiro do culto**, **telas com texto, imagens, vídeos e PowerPoint**, **timer** e **fundos em vídeo**.
 
 ## Como rodar no Mac
@@ -91,6 +91,30 @@ O app vem com dois fundos em vídeo (*Roxo suave* e *Ondas brancas*). **Enviar f
 arrastar arquivos para a área de fundos, ou **Usar como fundo** na biblioteca. Botão direito num fundo
 enviado: **Tirar dos fundos**. Em fundos claros, aumente *Escurecer fundo* em **Texto**.
 
+### Logo nas músicas
+
+Enquanto a letra de uma música está no Palco, o logo da igreja (*On The Way*) aparece pequeno no
+canto superior direito, com 35% de opacidade. Em **Logo nas músicas**, no inspetor: ligar/desligar,
+tamanho, opacidade e **Trocar imagem…** (use um PNG com fundo transparente).
+
+### Tradução simultânea
+
+Legenda automática no Palco com a tradução do que está sendo falado no microfone do Mac, em
+português → inglês ou inglês → português. Usa o **Microsoft Azure Speech** (precisa de internet).
+
+1. No [portal do Azure](https://portal.azure.com), crie um recurso **Speech** (há um plano gratuito
+   de 5 horas por mês; depois, cerca de US$ 2,50 por hora de áudio).
+2. Em *Chaves e ponto de extremidade*, copie a **Chave** e a **Região** (ex.: `brazilsouth`).
+3. No app, **Ajustes** (⌘,) → *Tradução simultânea*: cole a região e a chave. A chave fica guardada
+   no chaveiro do Mac.
+4. No inspetor, em **Tradução simultânea**, escolha a direção e o microfone (ex.: a entrada que vem
+   da mesa de som) e clique em **Iniciar tradução** — ou use o botão **Tradução** da barra de cima
+   (tecla **T**). Na primeira vez o macOS pede permissão para usar o microfone.
+
+A legenda aparece embaixo, centralizada, em amarelo sobre fundo preto (cor do texto, cor e
+opacidade do fundo, tamanho e número de linhas são editáveis). Ela continua visível mesmo com a
+**Tela preta**. No inspetor, o operador vê o que foi ouvido e a tradução.
+
 ### Nuvem (Google Drive)
 
 Em **Ajustes** (⌘,), escolha onde guardar músicas, roteiros e arquivos:
@@ -118,9 +142,10 @@ sempre na pasta do app. Para fazer backup, copie a pasta de dados.
 - `src/lib/icons.js`: ícones da interface
 - `src/lib/lyrics.js`: divisão da letra em slides (testes em `test/`, rode `npm test`)
 - `src/lib/screen-view.js`: desenha o telão; usado na projeção e na prévia do operador
+- `src/vendor/azure-speech/`: SDK de voz da Microsoft 1.52 (MIT), para a tradução simultânea
 - `src/vendor/pdfjs/`: [pdf.js](https://mozilla.github.io/pdf.js/) 3.11 (Apache-2.0), para
   transformar páginas de PDF em imagens
-- `assets/backgrounds/`: fundos em vídeo que acompanham o app
+- `assets/backgrounds/`: fundos em vídeo que acompanham o app · `assets/logo/`: logo padrão
 
 ## Próximos passos
 

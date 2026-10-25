@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, screen, dialog, shell, nativeTheme, systemPreferences, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen, dialog, shell, nativeTheme, systemPreferences, safeStorage, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -13,8 +13,10 @@ const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 const AUDIO_EXT = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'];
 const MEDIA_EXT = [...VIDEO_EXT, ...IMAGE_EXT, ...AUDIO_EXT];
 const DOC_EXT = ['pdf', 'ppt', 'pptx', 'key', 'odp'];
-// Dentro do app empacotado os vídeos ficam fora do .asar (ver "asarUnpack" no package.json).
-const BUILTIN_DIR = path.join(__dirname, 'assets', 'backgrounds').replace('app.asar', 'app.asar.unpacked');
+// Dentro do app empacotado os arquivos de assets ficam fora do .asar (ver "asarUnpack" no package.json).
+const ASSETS_DIR = path.join(__dirname, 'assets').replace('app.asar', 'app.asar.unpacked');
+const BUILTIN_DIR = path.join(ASSETS_DIR, 'backgrounds');
+const DEFAULT_LOGO = path.join(ASSETS_DIR, 'logo', 'On The Way.png');
 
 // Saídas: Palco (público) e Retorno (músicos e pregador). O Comando é a janela do operador.
 const OUTPUTS = {
@@ -430,6 +432,64 @@ ipcMain.handle('storage:pickFolder', async () => {
 });
 ipcMain.handle('storage:reveal', () => shell.openPath(dataDir()));
 ipcMain.handle('open:external', (_e, url) => /^https:\/\//.test(url) && shell.openExternal(url));
+
+ipcMain.handle('assets:logo', () => pathToFileURL(DEFAULT_LOGO).href);
+
+// ---------- tradução simultânea (Microsoft Azure Speech) ----------
+// A chave fica criptografada no chaveiro do Mac (safeStorage) e nunca vai para a interface:
+// o operador recebe só um token temporário (10 min) para falar com o serviço.
+
+const secretsFile = () => userFile('secrets.json');
+
+function azureSecrets() {
+  const s = readJsonFile(secretsFile(), {});
+  let key = '';
+  try {
+    if (s.azureKey) key = safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(s.azureKey, 'base64')) : s.azureKey;
+  } catch {}
+  return { key, region: s.azureRegion || '' };
+}
+
+ipcMain.handle('azure:get', () => {
+  const { key, region } = azureSecrets();
+  return { region, hasKey: !!key };
+});
+
+ipcMain.handle('azure:set', (_e, { key, region }) => {
+  const s = readJsonFile(secretsFile(), {});
+  s.azureRegion = (region || '').trim();
+  if (key !== undefined) {
+    const k = key.trim();
+    s.azureKey = !k ? '' : safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(k).toString('base64') : k;
+  }
+  writeJsonFile(secretsFile(), s);
+  return { region: s.azureRegion, hasKey: !!s.azureKey };
+});
+
+ipcMain.handle('azure:token', async () => {
+  const { key, region } = azureSecrets();
+  if (!key || !region) return { error: 'Configure a chave e a região do Azure em Ajustes.' };
+  try {
+    const res = await fetch(`https://${region}.api.cognitive.microsoft.com/sts/v1.0/issueToken`, {
+      method: 'POST',
+      headers: { 'Ocp-Apim-Subscription-Key': key, 'Content-Length': '0' },
+    });
+    if (res.status === 401) return { error: 'O Azure recusou a chave. Confira a chave e a região em Ajustes.' };
+    if (!res.ok) return { error: `O Azure respondeu com erro ${res.status}.` };
+    return { token: await res.text(), region };
+  } catch (e) {
+    return { error: 'Sem conexão com o Azure. Confira a internet e a região em Ajustes. (' + e.message + ')' };
+  }
+});
+
+ipcMain.handle('mic:ask', async () => {
+  if (!IS_MAC) return true;
+  try {
+    return await systemPreferences.askForMediaAccess('microphone');
+  } catch {
+    return false;
+  }
+});
 
 ipcMain.handle('system:accent', () => {
   try {
