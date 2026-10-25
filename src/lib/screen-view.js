@@ -24,7 +24,7 @@
     root.classList.add('screen');
     root.innerHTML =
       '<div class="bg"></div><div class="dim"></div><div class="fg"></div>' +
-      '<div class="content"><div class="top"></div><div class="main"></div></div>' +
+      '<div class="content"><div class="top"></div><div class="main"></div><div class="alt"></div><div class="ref"></div></div>' +
       '<img class="wm" alt="" /><div class="black"></div>' +
       // A legenda fica acima da tela preta: a tradução continua visível mesmo com o telão apagado.
       '<div class="caption"><div class="cap-box"><span class="cap-text"></span></div></div>';
@@ -34,6 +34,8 @@
     const content = root.querySelector('.content');
     const top = root.querySelector('.top');
     const main = root.querySelector('.main');
+    const alt = root.querySelector('.alt'); // segunda tradução (Bíblia bilíngue)
+    const ref = root.querySelector('.ref'); // referência do versículo
     const black = root.querySelector('.black');
     const wm = root.querySelector('.wm');
     const caption = root.querySelector('.caption');
@@ -98,13 +100,18 @@
     // Reduz a fonte até o texto caber na área útil da tela.
     function fit(basePx) {
       let size = basePx;
-      main.style.fontSize = size + 'px';
+      const apply = () => {
+        main.style.fontSize = size + 'px';
+        alt.style.fontSize = size * 0.66 + 'px';
+        ref.style.fontSize = Math.max(size * 0.42, 10) + 'px';
+      };
+      apply();
       for (let i = 0; i < 60 && size > 6; i++) {
-        const tooTall = main.offsetHeight + top.offsetHeight > content.clientHeight;
+        const tooTall = main.offsetHeight + top.offsetHeight + alt.offsetHeight + ref.offsetHeight > content.clientHeight;
         const tooWide = main.scrollWidth > main.clientWidth;
         if (!tooTall && !tooWide) break;
         size *= 0.94;
-        main.style.fontSize = size + 'px';
+        apply();
       }
     }
 
@@ -135,6 +142,8 @@
       const h = root.clientHeight;
       top.textContent = '';
       main.textContent = '';
+      alt.textContent = '';
+      ref.textContent = '';
       main.className = 'main';
       root.classList.toggle('is-timer', !!c && c.type === 'timer');
       main.style.textTransform = theme.uppercase ? 'uppercase' : 'none';
@@ -142,6 +151,8 @@
 
       if (c.type === 'text') {
         main.textContent = c.text;
+        alt.textContent = c.alt || '';
+        ref.textContent = c.ref || '';
         fit((h * (theme.fontSize || 8)) / 100);
       } else if (c.type === 'timer') {
         const ms = remaining(c);
@@ -183,7 +194,7 @@
       tick = c && c.type === 'timer' ? setInterval(draw, 250) : null;
 
       // Troca de letra faz um fade rápido; atualizações do mesmo conteúdo redesenham direto.
-      const key = !c || c.type === 'media' ? '' : c.type === 'timer' ? 'timer' : 't:' + c.text;
+      const key = !c || c.type === 'media' ? '' : c.type === 'timer' ? 'timer' : 't:' + c.text + (c.alt || '') + (c.ref || '');
       if (key !== contentKey) {
         contentKey = key;
         content.classList.add('fade');

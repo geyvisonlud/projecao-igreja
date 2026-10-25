@@ -23,6 +23,9 @@
             </span>
             <span data-icon="chevronDown" class="tb-chevron"></span>
           </button>
+          <button id="playBtn" class="play-service" title="Iniciar o culto: liga o Palco e o Retorno e projeta o primeiro item do roteiro">
+            <span data-icon="play"></span><span id="playLabel">Iniciar culto</span>
+          </button>
         </div>
         <div class="tb-center">
           <div class="segmented" role="group" aria-label="Telão">
@@ -57,6 +60,7 @@
           <div class="sb-heading"><span>Biblioteca</span></div>
           <ul class="sb-list">
             <li class="nav" data-view="songs"><span data-icon="music"></span>Músicas<span id="songBadge" class="sb-count"></span></li>
+            <li class="nav" data-view="bible"><span data-icon="book"></span>Bíblia</li>
             <li class="nav" data-view="media"><span data-icon="photo"></span>Mídia<span id="mediaBadge" class="sb-count"></span></li>
             <li class="nav" data-view="timer"><span data-icon="timer"></span>Timer</li>
           </ul>
@@ -102,6 +106,35 @@
             <h2>Nenhuma música ainda</h2>
             <p>Clique em <strong>Nova música</strong> e cole a letra. Linha em branco separa os slides.</p>
           </div>
+        </section>
+
+        <section id="viewBible" class="view hidden">
+          <div class="view-head">
+            <div class="vh-title">
+              <h1 id="bibleTitle">Bíblia</h1>
+              <div id="bibleSub" class="vh-sub"></div>
+            </div>
+            <div class="vh-actions">
+              <select id="bibleVersion" title="Tradução"></select>
+              <select id="bibleAlt" title="Segunda tradução, mostrada junto (leitura bilíngue)"></select>
+              <button id="bibleAdd" class="btn" disabled>Adicionar ao roteiro</button>
+            </div>
+          </div>
+          <div class="bible-bar">
+            <label class="search big"
+              ><span data-icon="search"></span><input id="bibleQuery" type="search" placeholder="Jo 3:16-18, Salmos 23 ou uma palavra"
+            /></label>
+            <button id="biblePrev" class="btn" disabled><span data-icon="chevronLeft"></span>Capítulo anterior</button>
+            <button id="bibleNext" class="btn" disabled>Próximo capítulo</button>
+          </div>
+          <div id="bibleSlides" class="slides"></div>
+          <ul id="bibleResults" class="table-list results hidden"></ul>
+          <div id="bibleEmpty" class="empty-state">
+            <div class="es-icon" data-icon="book"></div>
+            <h2>Digite uma referência</h2>
+            <p>Por exemplo <strong>Jo 3:16</strong>, <strong>1 Co 13:4-7</strong> ou <strong>Salmos 23</strong>. Ou uma palavra, como <strong>graça</strong>.</p>
+          </div>
+          <p id="bibleLicense" class="view-foot"></p>
         </section>
 
         <section id="viewMedia" class="view hidden">
@@ -461,6 +494,7 @@
     <script src="vendor/pdfjs/pdf.min.js"></script>
     <script src="vendor/azure-speech/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
     <script src="lib/lyrics.js"></script>
+    <script src="lib/bible.js"></script>
     <script src="lib/screen-view.js"></script>
     <script src="lib/stage-view.js"></script>
     <script src="lib/icons.js"></script>

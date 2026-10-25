@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { execFile } = require('child_process');
 const { pathToFileURL } = require('url');
 
@@ -17,6 +18,7 @@ const DOC_EXT = ['pdf', 'ppt', 'pptx', 'key', 'odp'];
 const ASSETS_DIR = path.join(__dirname, 'assets').replace('app.asar', 'app.asar.unpacked');
 const BUILTIN_DIR = path.join(ASSETS_DIR, 'backgrounds');
 const DEFAULT_LOGO = path.join(ASSETS_DIR, 'logo', 'On The Way.png');
+const BIBLE_DIR = path.join(ASSETS_DIR, 'bible');
 
 // Saídas: Palco (público) e Retorno (músicos e pregador). O Comando é a janela do operador.
 const OUTPUTS = {
@@ -434,6 +436,57 @@ ipcMain.handle('storage:reveal', () => shell.openPath(dataDir()));
 ipcMain.handle('open:external', (_e, url) => /^https:\/\//.test(url) && shell.openExternal(url));
 
 ipcMain.handle('assets:logo', () => pathToFileURL(DEFAULT_LOGO).href);
+
+// ---------- Bíblia ----------
+// Traduções de uso livre em assets/bible/<id>.json.gz: { name, abbrev, lang, license, books: [[[versículo]]] }.
+
+const bibles = new Map();
+function loadBible(id) {
+  if (!bibles.has(id)) bibles.set(id, JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(BIBLE_DIR, `${path.basename(id)}.json.gz`)))));
+  return bibles.get(id);
+}
+const plainText = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+ipcMain.handle('bible:list', () =>
+  fs
+    .readdirSync(BIBLE_DIR)
+    .filter((f) => f.endsWith('.json.gz'))
+    .map((f) => {
+      const id = f.replace('.json.gz', '');
+      const { name, abbrev, lang, license } = loadBible(id);
+      return { id, name, abbrev, lang, license };
+    }),
+);
+
+// Versículos de um capítulo (from/to opcionais), e quantos capítulos o livro tem.
+ipcMain.handle('bible:passage', (_e, id, book, chapter, from, to) => {
+  const b = loadBible(id).books[book];
+  const verses = b?.[chapter - 1];
+  if (!verses) return { verses: [], chapters: b ? b.length : 0 };
+  const first = from || 1;
+  const last = Math.min(to || from || verses.length, verses.length);
+  const list = [];
+  for (let v = first; v <= last; v++) if (verses[v - 1]) list.push({ verse: v, text: verses[v - 1] });
+  return { verses: list, chapters: b.length };
+});
+
+// Busca por palavras (todas precisam aparecer), sem diferenciar acentos.
+ipcMain.handle('bible:search', (_e, id, query, limit = 80) => {
+  const words = plainText(query).split(/\s+/).filter((w) => w.length > 1);
+  if (!words.length) return [];
+  const out = [];
+  const books = loadBible(id).books;
+  for (let b = 0; b < books.length && out.length < limit; b++) {
+    for (let c = 0; c < books[b].length && out.length < limit; c++) {
+      books[b][c].forEach((text, v) => {
+        if (out.length >= limit || !text) return;
+        const t = plainText(text);
+        if (words.every((w) => t.includes(w))) out.push({ book: b, chapter: c + 1, verse: v + 1, text });
+      });
+    }
+  }
+  return out;
+});
 
 // ---------- tradução simultânea (Microsoft Azure Speech) ----------
 // A chave fica criptografada no chaveiro do Mac (safeStorage) e nunca vai para a interface:

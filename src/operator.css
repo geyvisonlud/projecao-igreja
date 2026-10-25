@@ -1505,3 +1505,64 @@ input[type='color'] {
   align-items: flex-start;
   gap: 4px;
 }
+
+/* Iniciar culto */
+.play-service {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  margin-left: 6px;
+  padding: 0 12px 0 9px;
+  border: 0;
+  border-radius: 13px;
+  background: var(--green);
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 1px 1.5px rgba(0, 0, 0, 0.15);
+}
+.play-service .icon {
+  width: 12px;
+  height: 12px;
+}
+.play-service.on {
+  background: var(--fill-strong);
+  color: var(--label);
+  box-shadow: none;
+}
+
+/* Bíblia */
+.bible-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.search.big {
+  flex: 1;
+  height: 32px;
+  border-radius: 8px;
+}
+.search.big input {
+  width: 100%;
+  font-size: 14px;
+}
+.bible-bar .btn .icon {
+  width: 13px;
+  height: 13px;
+}
+.table-list.results li {
+  grid-template-columns: 150px 1fr;
+  height: auto;
+  min-height: 34px;
+  padding: 7px 10px;
+  align-items: start;
+}
+.table-list.results .c2 {
+  white-space: normal;
+  color: var(--label);
+}
+.slide.target .face {
+  box-shadow: 0 0 0 3px var(--accent);
+}

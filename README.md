@@ -1,6 +1,6 @@
 # Projeção Igreja
 
-Software de apresentação para o telão da igreja (macOS). Versão 0.5: **banco de músicas**,
+Software de apresentação para o telão da igreja (macOS). Versão 0.6: **banco de músicas**, **Bíblia**,
 **roteiro do culto**, **telas com texto, imagens, vídeos e PowerPoint**, **timer** e **fundos em vídeo**.
 
 ## Como rodar no Mac
@@ -61,7 +61,29 @@ timer estiver correndo, aparece **Carregar** para trocar na hora certa.
 | C ou Esc | limpar (esconde a letra, fica só o fundo) |
 | ⌘N | nova música |
 | ⌘F | buscar música |
+| T | liga/desliga a tradução simultânea |
 | ⌘, | ajustes |
+
+### Iniciar culto
+
+O botão verde **Iniciar culto**, ao lado do nome do roteiro, faz tudo de uma vez: liga o Palco (e o
+Retorno, se houver uma segunda tela externa ou se você já tiver escolhido uma), seleciona o primeiro
+item do roteiro e o projeta — se for um timer, como o da Lição, já começa a contar. Depois o culto
+segue normalmente com as setas. O mesmo botão vira **Encerrar culto**, que desliga as telas.
+
+### Bíblia
+
+Em **Bíblia**, digite uma referência — `Jo 3:16`, `1 Co 13:4-7`, `Salmos 23`, também em inglês
+(`John 3:16`, `Psalm 23`) — e os versículos aparecem como slides, um por versículo, com a referência
+embaixo. Clique para projetar e use as setas para avançar. Digite uma palavra (ex.: `graça`) e aperte
+Enter para buscar no texto. **Capítulo anterior / Próximo capítulo** navegam pelo livro.
+
+Escolha a tradução e, se quiser, uma **segunda tradução** para leitura bilíngue (aparece em itálico
+embaixo do versículo). **Adicionar ao roteiro** guarda a passagem como um item de Telas.
+
+Traduções incluídas, todas de uso livre: **Bíblia Livre** (português, CC BY 3.0 BR),
+**Berean Standard Bible** (inglês, domínio público) e **King James Version** (inglês, domínio público).
+Traduções como NVI, ARA e NTLH têm direitos autorais e não podem ser distribuídas com o app.
 
 ### Músicas
 
@@ -139,7 +161,8 @@ sempre na pasta do app. Para fazer backup, copie a pasta de dados.
 - `preload.js`: ponte segura entre as janelas e o processo principal
 - `src/operator.*`: tela do operador
 - `src/projection.*`: tela do Palco · `src/stage.*` e `src/lib/stage-view.js`: tela de Retorno
-- `src/lib/icons.js`: ícones da interface
+- `src/lib/icons.js`: ícones da interface · `src/lib/bible.js`: livros e leitura de referências
+- `assets/bible/`: traduções da Bíblia (JSON compactado, de [scrollmapper/bible_databases](https://github.com/scrollmapper/bible_databases))
 - `src/lib/lyrics.js`: divisão da letra em slides (testes em `test/`, rode `npm test`)
 - `src/lib/screen-view.js`: desenha o telão; usado na projeção e na prévia do operador
 - `src/vendor/azure-speech/`: SDK de voz da Microsoft 1.52 (MIT), para a tradução simultânea
@@ -150,4 +173,4 @@ sempre na pasta do app. Para fazer backup, copie a pasta de dados.
 ## Próximos passos
 
 - fundo próprio por música, logo da igreja
-- Bíblia, avisos, controle pelo celular
+- mensagens no Palco e no Retorno, controle pelo celular, ordem das partes da música

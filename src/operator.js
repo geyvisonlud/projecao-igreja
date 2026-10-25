@@ -2,6 +2,7 @@
 // `api` é exposto pelo preload (contextBridge); redeclará-lo aqui quebra o script no Electron.
 const { parse, normalize } = window.Lyrics;
 const { fmt, remaining } = window.ScreenView;
+const { parseRef, formatRef, bookName } = window.Bible;
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -34,7 +35,7 @@ let media = [];
 let settings = {};
 let planId = null; // roteiro aberto
 let selected = null; // { kind: 'song', id } (biblioteca) ou { kind: 'item', id } (roteiro)
-let view = 'slides'; // slides | songs | media | timer | audio
+let view = 'slides'; // slides | songs | bible | media | timer | audio
 let live = null; // o que está no Palco: { key, index, src, itemId }
 let outputs = { palco: false, retorno: false };
 let mediaSeq = 0; // muda a cada vez que um vídeo entra no ar, para recomeçá-lo
@@ -66,6 +67,11 @@ function push() {
   }
   $('#palcoMonitor').classList.toggle('on-air', outputs.palco);
   $('#captionBtn').classList.toggle('on', captions.running);
+  $('#playBtn').classList.toggle('on', outputs.palco);
+  $('#playLabel').textContent = outputs.palco ? 'Encerrar culto' : 'Iniciar culto';
+  const playIcon = outputs.palco ? 'stop' : 'play';
+  const playSpan = $('#playBtn [data-icon]');
+  if (playSpan.dataset.icon !== playIcon) Icons.set(playSpan, playIcon);
   const video = show.content?.type === 'media' && show.content.mediaType === 'video';
   $('#videoControls').classList.toggle('hidden', !video);
   if (video) $('#vPlay').textContent = show.content.playing ? 'Pausar vídeo' : 'Continuar vídeo';
@@ -102,7 +108,7 @@ function renderAll() {
 
 function showView(name) {
   view = name;
-  for (const v of ['slides', 'songs', 'media', 'timer', 'audio']) {
+  for (const v of ['slides', 'songs', 'bible', 'media', 'timer', 'audio']) {
     $(`#view${v[0].toUpperCase() + v.slice(1)}`).classList.toggle('hidden', v !== name);
   }
   renderNav();
@@ -142,6 +148,7 @@ $('#backBtn').onclick = () => {
 // Uma "fonte" é qualquer coisa com slides: música (da biblioteca ou do roteiro) ou item de telas.
 function sourceOf(sel) {
   if (!sel) return null;
+  if (sel.kind === 'bible') return bibleSource();
   if (sel.kind === 'song') return songSource(songById(sel.id));
   const item = planItem(sel.id);
   if (!item) return null;
@@ -172,7 +179,7 @@ function songSource(song) {
 
 // Slide de um item de telas no formato usado pelos cartões e pelo telão.
 function slideView(slide) {
-  if (slide.type === 'text') return { label: '', text: slide.text };
+  if (slide.type === 'text') return { label: slide.ref || '', text: slide.text, ref: slide.ref, alt: slide.alt };
   const m = mediaById(slide.mediaId);
   return { label: m ? m.name : '(arquivo removido)', mediaType: slide.type, url: m?.url, loop: !!slide.loop, missing: !m || m.missing };
 }
@@ -206,6 +213,8 @@ function select(sel) {
     showView('timer');
   } else if (item?.type === 'audio') {
     showView('audio');
+  } else if (sel?.kind === 'bible') {
+    showView('bible');
   } else {
     showView('slides');
   }
@@ -215,6 +224,7 @@ function select(sel) {
 
 function renderCenter() {
   if (view === 'audio') return renderAudioView();
+  if (view === 'bible') return renderBible();
   const src = sourceOf(selected);
   $('#viewSlides .view-head').classList.toggle('hidden', !src);
   $('#emptyState').classList.toggle('hidden', !!src);
@@ -242,7 +252,7 @@ function liveFrom(src, index, itemId = null) {
   live = { key: src.key, index, src, itemId };
   show.content = slide.mediaType
     ? { type: 'media', mediaType: slide.mediaType, url: slide.url, loop: slide.loop, playing: true, seq: ++mediaSeq }
-    : { type: 'text', text: slide.text, label: slide.label };
+    : { type: 'text', text: slide.text, label: slide.label, ref: slide.ref, alt: slide.alt };
   show.black = false;
   show.hideText = false;
   push();
@@ -252,7 +262,7 @@ function liveFrom(src, index, itemId = null) {
 
 // O que o Retorno mostra: título e parte atuais, slide atual e o próximo.
 function stageInfo() {
-  const part = (sl) => (sl.mediaType ? { mediaType: sl.mediaType, name: sl.label } : { text: sl.text });
+  const part = (sl) => (sl.mediaType ? { mediaType: sl.mediaType, name: sl.label } : { text: sl.ref ? `${sl.text}\n${sl.ref}` : sl.text });
   if (show.content?.type === 'timer') return { title: timer.message || 'Timer', current: null, next: nextItemPreview(timer.itemId) };
   if (!live || !onAirSlide()) return {};
   const { src, index, itemId } = live;
@@ -782,7 +792,7 @@ slidesForm.addEventListener('submit', async (e) => {
           .split(/\n[ \t]*\n/)
           .map((t) => t.trim())
           .filter(Boolean)
-          .map((text, k) => ({ id: k ? uid() : sl.id, type: 'text', text })),
+          .map((text, k) => ({ ...(k ? {} : sl), id: k ? uid() : sl.id, type: 'text', text })),
   );
   const updated = { ...slidesEditing, title: slidesForm.title.value.trim(), slides };
   slidesDialog.close();
@@ -1230,6 +1240,176 @@ api.onOutputStatus((status) => {
   push();
 });
 
+// ---------- Bíblia ----------
+
+let bibles = [];
+const bible = { ref: null, verses: [], chapters: 0, target: null };
+const bibleCfg = () => ({ version: 'blivre', alt: '', ...settings.bible });
+const bibleInfo = (id) => bibles.find((b) => b.id === id);
+
+function bibleSource() {
+  if (!bible.ref || !bible.verses.length) return null;
+  const { version, alt } = bibleCfg();
+  const lang = bibleInfo(version)?.lang || 'pt';
+  const abbrev = [bibleInfo(version)?.abbrev, alt && bibleInfo(alt)?.abbrev].filter(Boolean).join(' / ');
+  const r = bible.ref;
+  return {
+    key: `bible:${version}:${alt}:${r.book}:${r.chapter}:${r.from || ''}-${r.to || ''}`,
+    title: formatRef(r, lang),
+    meta: abbrev,
+    slides: bible.verses.map((v) => {
+      const one = formatRef({ book: r.book, chapter: r.chapter, from: v.verse, to: v.verse }, lang);
+      return { label: one, text: v.text, alt: v.alt || undefined, ref: `${one} · ${abbrev}` };
+    }),
+  };
+}
+
+async function loadPassage(ref, target = null) {
+  const { version, alt } = bibleCfg();
+  const res = await api.biblePassage(version, ref.book, ref.chapter, ref.from, ref.to);
+  const second = alt ? await api.biblePassage(alt, ref.book, ref.chapter, ref.from, ref.to) : null;
+  bible.ref = ref;
+  bible.chapters = res.chapters;
+  bible.target = target;
+  bible.verses = res.verses.map((v) => ({ ...v, alt: second?.verses.find((x) => x.verse === v.verse)?.text }));
+  $('#bibleResults').classList.add('hidden');
+  selected = { kind: 'bible' };
+  renderAll();
+  if (target) document.querySelectorAll('#bibleSlides .slide')[target - 1]?.scrollIntoView({ block: 'center' });
+}
+
+async function runBibleQuery() {
+  const q = $('#bibleQuery').value.trim();
+  if (!q) return;
+  const ref = parseRef(q);
+  if (ref) return loadPassage(ref);
+  // Não é referência: busca a palavra no texto.
+  const results = await api.bibleSearch(bibleCfg().version, q);
+  bible.ref = null;
+  bible.verses = [];
+  if (selected?.kind === 'bible') selected = null;
+  const lang = bibleInfo(bibleCfg().version)?.lang || 'pt';
+  $('#bibleResults').classList.remove('hidden');
+  $('#bibleResults').replaceChildren(
+    ...(results.length
+      ? results.map((r) =>
+          h(
+            'li',
+            { onclick: () => loadPassage({ book: r.book, chapter: r.chapter, from: null, to: null }, r.verse) },
+            h('span', { className: 'c1', textContent: formatRef({ book: r.book, chapter: r.chapter, from: r.verse, to: r.verse }, lang) }),
+            h('span', { className: 'c2', textContent: r.text }),
+          ),
+        )
+      : [h('li', {}, h('span', { className: 'c2', textContent: `Nada encontrado para "${q}".` }))]),
+  );
+  renderBible();
+}
+
+function renderBible() {
+  const src = bibleSource();
+  const { version } = bibleCfg();
+  $('#bibleTitle').textContent = src ? src.title : 'Bíblia';
+  $('#bibleSub').textContent = src ? src.meta : bibleInfo(version)?.name || '';
+  $('#bibleAdd').disabled = !src;
+  $('#biblePrev').disabled = !bible.ref || bible.ref.chapter <= 1;
+  $('#bibleNext').disabled = !bible.ref || bible.ref.chapter >= bible.chapters;
+  const showingResults = !$('#bibleResults').classList.contains('hidden');
+  $('#bibleEmpty').classList.toggle('hidden', !!src || showingResults);
+  $('#bibleLicense').textContent = [bibleCfg().version, bibleCfg().alt].filter(Boolean).map((id) => bibleInfo(id)?.license).filter(Boolean).join(' · ');
+  $('#bibleSlides').replaceChildren(
+    ...(src?.slides || []).map((slide, i) => {
+      const card = slideCard(slide, i, { live: live?.key === src.key && live.index === i && onAirSlide(), onclick: () => goLive(i) });
+      if (bible.target && bible.verses[i]?.verse === bible.target) card.classList.add('target');
+      return card;
+    }),
+  );
+}
+
+function fillBibleSelects() {
+  const { version, alt } = bibleCfg();
+  const opt = (b, sel) => h('option', { value: b.id, textContent: `${b.name} (${b.abbrev})`, selected: b.id === sel });
+  $('#bibleVersion').replaceChildren(...bibles.map((b) => opt(b, version)));
+  $('#bibleAlt').replaceChildren(h('option', { value: '', textContent: 'Sem segunda tradução', selected: !alt }), ...bibles.map((b) => opt(b, alt)));
+}
+
+async function setBible(changes) {
+  settings.bible = { ...bibleCfg(), ...changes };
+  saveSettings();
+  if (bible.ref) await loadPassage(bible.ref, bible.target);
+  else renderBible();
+}
+
+let bibleTimer = null;
+$('#bibleQuery').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    clearTimeout(bibleTimer);
+    e.target.blur(); // assim as setas já passam os versículos
+    runBibleQuery();
+  }
+});
+// Referências completas carregam enquanto digita; palavras só com Enter (a busca percorre a Bíblia toda).
+$('#bibleQuery').addEventListener('input', () => {
+  clearTimeout(bibleTimer);
+  bibleTimer = setTimeout(() => parseRef($('#bibleQuery').value) && runBibleQuery(), 350);
+});
+$('#bibleVersion').onchange = (e) => setBible({ version: e.target.value });
+$('#bibleAlt').onchange = (e) => setBible({ alt: e.target.value });
+$('#biblePrev').onclick = () => bible.ref && loadPassage({ ...bible.ref, chapter: bible.ref.chapter - 1, from: null, to: null });
+$('#bibleNext').onclick = () => bible.ref && loadPassage({ ...bible.ref, chapter: bible.ref.chapter + 1, from: null, to: null });
+$('#bibleAdd').onclick = async () => {
+  const src = bibleSource();
+  if (!src) return;
+  await addItem({
+    type: 'slides',
+    title: `${src.title} (${src.meta})`,
+    slides: src.slides.map((sl) => ({ id: uid(), type: 'text', text: sl.text, ref: sl.ref, alt: sl.alt })),
+  });
+  $('#planItems').lastElementChild?.scrollIntoView({ block: 'nearest' });
+};
+
+// ---------- iniciar e encerrar o culto ----------
+
+// Liga o Palco (e o Retorno, se houver tela para ele), seleciona o primeiro item do roteiro e o projeta.
+async function startService() {
+  const plan = currentPlan();
+  if (!plan || !plan.items.length) return alert('Monte o roteiro antes de iniciar o culto.');
+  const displays = await api.listDisplays();
+  const external = displays.filter((d) => !d.primary);
+  const palcoId = settings.outputs?.palco ?? external[0]?.id;
+  const retornoId = settings.outputs?.retorno ?? external.find((d) => d.id !== palcoId)?.id;
+  if (!outputs.palco) await api.openOutput('palco', palcoId);
+  if (retornoId != null && !outputs.retorno) await api.openOutput('retorno', retornoId);
+
+  const first = plan.items[0];
+  select({ kind: 'item', id: first.id });
+  if (first.type === 'timer') {
+    loadTimerItem(first, true);
+    if (!timerRunning()) toggleTimer();
+    projectTimer();
+  } else if (first.type === 'audio') {
+    const m = mediaById(first.mediaId);
+    if (m && !m.missing && (nowPlaying?.id !== m.id || audio.paused)) toggleAudio(m);
+  } else {
+    goLive(0);
+  }
+}
+
+async function endService() {
+  if (!confirm('Encerrar o culto? O Palco e o Retorno serão desligados.')) return;
+  await api.closeOutput('palco');
+  await api.closeOutput('retorno');
+  if (captions.running) captions.stop();
+  if (nowPlaying && !audio.paused) audio.pause();
+  live = null;
+  show.content = null;
+  show.black = false;
+  show.hideText = false;
+  push();
+  renderAll();
+}
+
+$('#playBtn').onclick = () => (outputs.palco ? endService() : startService());
+
 // ---------- logo (marca d'água) nas músicas ----------
 
 const wmSettings = () => ({ ...DEFAULT_WATERMARK, ...settings.watermark });
@@ -1607,7 +1787,8 @@ $('#tSetAt').onclick = () => {
   timer.endAt = end.getTime();
   syncTimer();
 };
-$('#tStart').onclick = () => {
+$('#tStart').onclick = () => toggleTimer();
+function toggleTimer() {
   if (timerRunning()) {
     timer.remaining = Math.max(0, timer.endAt - Date.now());
     timer.endAt = null;
@@ -1615,7 +1796,7 @@ $('#tStart').onclick = () => {
     timer.endAt = Date.now() + timer.remaining;
   }
   syncTimer();
-};
+}
 const nudge = (ms) => {
   if (timerRunning()) timer.endAt = Math.max(Date.now(), timer.endAt + ms);
   else timer.remaining = Math.max(0, timer.remaining + ms);
@@ -1634,14 +1815,15 @@ $('#tEnd').oninput = (e) => {
   syncTimer();
   saveSettings();
 };
-$('#tProject').onclick = () => {
+$('#tProject').onclick = () => projectTimer();
+function projectTimer() {
   live = null;
   show.content = { type: 'timer', ...timer };
   show.black = false;
   show.hideText = false;
   push();
   renderAll();
-};
+}
 
 // ---------- ajustes: onde guardar os dados ----------
 
@@ -1751,6 +1933,7 @@ document.addEventListener('keydown', (e) => {
 
 (async function init() {
   defaultLogoUrl = await api.defaultLogo();
+  bibles = await api.listBibles();
   const accent = await api.accentColor();
   if (accent) document.documentElement.style.setProperty('--accent', accent);
 
@@ -1784,6 +1967,7 @@ document.addEventListener('keydown', (e) => {
   bindTheme();
   bindWatermark();
   bindCaption();
+  fillBibleSelects();
   refreshMics();
   renderBackgrounds();
   syncTimer();
