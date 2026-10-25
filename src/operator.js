@@ -1,17 +1,30 @@
+// Comando: a janela do operador.
 // `api` é exposto pelo preload (contextBridge); redeclará-lo aqui quebra o script no Electron.
 const { parse, normalize } = window.Lyrics;
 const { fmt, remaining } = window.ScreenView;
 
 const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
 function h(tag, props = {}, ...children) {
   const n = document.createElement(tag);
-  Object.assign(n, props);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'dataset') Object.assign(n.dataset, v);
+    else n[k] = v;
+  }
   n.append(...children.filter((c) => c != null));
   return n;
 }
+const icon = (name) => {
+  const s = document.createElement('span');
+  s.innerHTML = Icons.svg(name);
+  return s.firstChild;
+};
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const clock = (sec) => (Number.isFinite(sec) ? `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}` : '0:00');
 
 const DEFAULT_THEME = { fontSize: 8, dim: 0.35, uppercase: false };
+const MEDIA_LABEL = { image: 'Imagem', video: 'Vídeo', audio: 'Áudio' };
 
 let songs = [];
 let plans = [];
@@ -19,40 +32,46 @@ let media = [];
 let settings = {};
 let planId = null; // roteiro aberto
 let selected = null; // { kind: 'song', id } (biblioteca) ou { kind: 'item', id } (roteiro)
-let live = null; // { key, index } do slide que está no telão
-let projectionOpen = false;
+let view = 'slides'; // slides | songs | media | timer | audio
+let live = null; // o que está no Palco: { key, index, src, itemId }
+let outputs = { palco: false, retorno: false };
 let mediaSeq = 0; // muda a cada vez que um vídeo entra no ar, para recomeçá-lo
+let mediaFilter = 'all';
+let selectedMediaId = null;
 
-// Estado enviado ao telão. A pré-visualização desenha exatamente o mesmo objeto.
+// Estado enviado às saídas. As prévias desenham exatamente o mesmo objeto.
 const show = { black: false, hideText: false, background: null, content: null, theme: { ...DEFAULT_THEME } };
 const timer = { endAt: null, remaining: 5 * 60000, message: 'O culto começa em', endMessage: '', itemId: null };
 
+if (new URLSearchParams(location.search).get('platform') === 'darwin') document.body.classList.add('mac');
+Icons.fill();
 const preview = ScreenView.create($('#preview'));
+const stagePreview = StageView.create($('#stagePreview'));
 
 function push() {
-  const state = JSON.parse(JSON.stringify(show));
+  const state = JSON.parse(JSON.stringify({ ...show, timer, stage: stageInfo() }));
   api.updateShow(state);
   preview.update(state);
+  stagePreview.update(state);
   $('#blackBtn').classList.toggle('on', show.black);
   $('#hideBtn').classList.toggle('on', show.hideText);
-  $('#liveBadge').classList.toggle('on', projectionOpen);
-  $('#liveBadge').textContent = projectionOpen ? 'AO VIVO' : 'PRÉVIA';
+  for (const role of ['palco', 'retorno']) {
+    $(`#out${role === 'palco' ? 'Palco' : 'Retorno'}`).classList.toggle('on', outputs[role]);
+    const badge = $(`#${role}Badge`);
+    badge.textContent = outputs[role] ? 'No ar' : 'Desligado';
+    badge.classList.toggle('on', outputs[role]);
+  }
+  $('#palcoMonitor').classList.toggle('on-air', outputs.palco);
   const video = show.content?.type === 'media' && show.content.mediaType === 'video';
   $('#videoControls').classList.toggle('hidden', !video);
-  if (video) $('#vPlay').textContent = show.content.playing ? '❚❚ Pausar vídeo' : '▶ Continuar vídeo';
+  if (video) $('#vPlay').textContent = show.content.playing ? 'Pausar vídeo' : 'Continuar vídeo';
 }
 
 let saveTimer = null;
 function saveSettings() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    settings = {
-      ...settings,
-      planId,
-      theme: show.theme,
-      timerMessage: timer.message,
-      timerEndMessage: timer.endMessage,
-    };
+    settings = { ...settings, planId, theme: show.theme, timerMessage: timer.message, timerEndMessage: timer.endMessage };
     api.setSettings(settings);
   }, 300);
 }
@@ -60,17 +79,59 @@ function saveSettings() {
 const maxLines = () => Number(settings.maxLines) || 4;
 const slidesOf = (text) => parse(text, { maxLines: maxLines() }).slides;
 const songById = (id) => songs.find((s) => s.id === id) || null;
+const mediaById = (id) => media.find((m) => m.id === id) || null;
 const currentPlan = () => plans.find((p) => p.id === planId) || null;
 const planItem = (id) => currentPlan()?.items.find((i) => i.id === id) || null;
-const mediaById = (id) => media.find((m) => m.id === id) || null;
 const onAirSlide = () => ['text', 'media'].includes(show.content?.type);
 const songMeta = (s) => [s.artist, s.key && `Tom ${s.key}`].filter(Boolean).join(' · ');
+const libraryMedia = () => media.filter((m) => m.role !== 'slide');
 
 function renderAll() {
   renderPlan();
+  renderNav();
   renderSongList();
   renderCenter();
+  renderMediaGrid();
 }
+
+// ---------- views ----------
+
+function showView(name) {
+  view = name;
+  for (const v of ['slides', 'songs', 'media', 'timer', 'audio']) {
+    $(`#view${v[0].toUpperCase() + v.slice(1)}`).classList.toggle('hidden', v !== name);
+  }
+  renderNav();
+}
+
+function renderNav() {
+  const itemSelected = selected?.kind === 'item';
+  $$('.sidebar .nav').forEach((li) => {
+    const v = li.dataset.view;
+    li.classList.toggle('selected', !itemSelected && (view === v || (v === 'songs' && view === 'slides' && selected?.kind === 'song')));
+  });
+  $('#songBadge').textContent = songs.length || '';
+  $('#mediaBadge').textContent = libraryMedia().filter((m) => !m.builtin).length || '';
+}
+
+$$('.sidebar .nav').forEach((li) => {
+  li.onclick = () => {
+    if (selected?.kind === 'item') selected = null;
+    showView(li.dataset.view);
+    renderAll();
+  };
+});
+$$('[data-goto]').forEach((a) => {
+  a.onclick = (e) => {
+    e.preventDefault();
+    showView(a.dataset.goto);
+  };
+});
+$('#backBtn').onclick = () => {
+  selected = null;
+  showView('songs');
+  renderAll();
+};
 
 // ---------- o que está selecionado ----------
 
@@ -82,41 +143,15 @@ function sourceOf(sel) {
   if (!item) return null;
   if (item.type === 'song') return songSource(songById(item.songId));
   if (item.type === 'slides') {
-    const n = item.slides.length;
     return {
       key: 'item:' + item.id,
       title: item.title || 'Telas',
-      meta: `Telas · ${n} slide${n === 1 ? '' : 's'}`,
+      meta: `Telas · ${plural(item.slides.length, 'slide', 'slides')}`,
       slides: item.slides.map(slideView),
       edit: () => openSlidesDialog(item),
     };
   }
   return null;
-}
-
-// Slide de um item de telas no formato usado pelos cartões e pelo telão.
-function slideView(slide) {
-  if (slide.type === 'text') return { label: '', text: slide.text };
-  const m = mediaById(slide.mediaId);
-  return {
-    label: m ? m.name : '(arquivo removido)',
-    mediaType: slide.type,
-    url: m?.url,
-    loop: !!slide.loop,
-    missing: !m || m.missing,
-  };
-}
-
-function thumb(view) {
-  if (view.missing) return h('div', { className: 'thumb missing', textContent: 'arquivo não encontrado' });
-  return h(
-    'div',
-    { className: 'thumb' },
-    view.mediaType === 'video'
-      ? h('video', { src: view.url + '#t=0.5', muted: true, preload: 'metadata' })
-      : h('img', { src: view.url, loading: 'lazy' }),
-    view.mediaType === 'video' ? h('span', { className: 'badge-video', textContent: '▶ vídeo' + (view.loop ? ' · repete' : '') }) : null,
-  );
 }
 
 function songSource(song) {
@@ -131,49 +166,76 @@ function songSource(song) {
   };
 }
 
+// Slide de um item de telas no formato usado pelos cartões e pelo telão.
+function slideView(slide) {
+  if (slide.type === 'text') return { label: '', text: slide.text };
+  const m = mediaById(slide.mediaId);
+  return { label: m ? m.name : '(arquivo removido)', mediaType: slide.type, url: m?.url, loop: !!slide.loop, missing: !m || m.missing };
+}
+
+// Miniatura 16:9 de um slide (texto, imagem ou vídeo).
+function face(view) {
+  if (view.mediaType && view.missing) return h('div', { className: 'face missing', textContent: 'Arquivo não encontrado' });
+  if (!view.mediaType) return h('div', { className: 'face' }, h('div', { className: 'txt', textContent: view.text }));
+  return h(
+    'div',
+    { className: 'face' },
+    view.mediaType === 'video' ? h('video', { src: view.url + '#t=0.5', muted: true, preload: 'metadata' }) : h('img', { src: view.url, loading: 'lazy' }),
+    view.mediaType === 'video' ? h('span', { className: 'badge-video' }, icon('play'), view.loop ? 'Vídeo · repete' : 'Vídeo') : null,
+  );
+}
+
+function slideCard(view, i, { live: isLive = false, onclick } = {}) {
+  return h(
+    onclick ? 'button' : 'div',
+    { className: 'slide' + (isLive ? ' live' : ''), onclick },
+    face(view),
+    h('div', { className: 'cap' }, h('span', { className: 'lbl', textContent: view.label || ' ' }), h('span', { className: 'num', textContent: i + 1 })),
+  );
+}
+
 function select(sel) {
   selected = sel;
   const item = sel?.kind === 'item' ? planItem(sel.id) : null;
   if (item?.type === 'timer') {
     loadTimerItem(item);
-    showTab('timer');
+    showView('timer');
+  } else if (item?.type === 'audio') {
+    showView('audio');
   } else {
-    showTab('songs');
+    showView('slides');
   }
   renderAll();
   document.querySelector('#planItems li.selected')?.scrollIntoView({ block: 'nearest' });
 }
 
 function renderCenter() {
+  if (view === 'audio') return renderAudioView();
   const src = sourceOf(selected);
-  $('#songHead').classList.toggle('hidden', !src);
+  $('#viewSlides .view-head').classList.toggle('hidden', !src);
   $('#emptyState').classList.toggle('hidden', !!src);
   if (!src) return $('#slides').replaceChildren();
   $('#songTitle').textContent = src.title;
   $('#songMeta').textContent = src.meta;
+  $('#backBtn').classList.toggle('hidden', selected.kind !== 'song');
   $('#addToPlan').classList.toggle('hidden', selected.kind !== 'song');
   $('#slides').replaceChildren(
-    ...src.slides.map((slide, i) =>
-      h(
-        'button',
-        {
-          className: 'slide' + (slide.mediaType ? ' is-media' : '') + (live && live.key === src.key && live.index === i ? ' live' : ''),
-          onclick: () => goLive(i),
-        },
-        h('div', { className: 'lbl' }, h('span', { textContent: slide.label || '\u00a0' }), h('span', { textContent: i + 1 })),
-        slide.mediaType ? thumb(slide) : h('div', { className: 'txt', textContent: slide.text }),
-      ),
-    ),
+    ...src.slides.map((slide, i) => slideCard(slide, i, { live: live?.key === src.key && live.index === i, onclick: () => goLive(i) })),
   );
 }
 
 function goLive(index) {
   const src = sourceOf(selected);
-  if (!src || !src.slides.length) return;
+  if (!src) return;
+  liveFrom(src, index, selected.kind === 'item' ? selected.id : null);
+}
+
+function liveFrom(src, index, itemId = null) {
+  if (!src.slides.length) return;
   index = Math.max(0, Math.min(src.slides.length - 1, index));
-  live = { key: src.key, index };
   const slide = src.slides[index];
   if (slide.mediaType && slide.missing) return;
+  live = { key: src.key, index, src, itemId };
   show.content = slide.mediaType
     ? { type: 'media', mediaType: slide.mediaType, url: slide.url, loop: slide.loop, playing: true, seq: ++mediaSeq }
     : { type: 'text', text: slide.text, label: slide.label };
@@ -182,6 +244,35 @@ function goLive(index) {
   push();
   renderAll();
   document.querySelectorAll('#slides .slide')[index]?.scrollIntoView({ block: 'nearest' });
+}
+
+// O que o Retorno mostra: título e parte atuais, slide atual e o próximo.
+function stageInfo() {
+  const part = (sl) => (sl.mediaType ? { mediaType: sl.mediaType, name: sl.label } : { text: sl.text });
+  if (show.content?.type === 'timer') return { title: timer.message || 'Timer', current: null, next: nextItemPreview(timer.itemId) };
+  if (!live || !onAirSlide()) return {};
+  const { src, index, itemId } = live;
+  const cur = src.slides[index];
+  const following = src.slides[index + 1];
+  return {
+    title: src.title,
+    label: cur?.label && !cur.mediaType ? cur.label : '',
+    current: cur ? part(cur) : null,
+    next: following ? part(following) : nextItemPreview(itemId),
+  };
+}
+
+function nextItemPreview(itemId) {
+  const plan = currentPlan();
+  if (!plan || !itemId) return null;
+  const i = plan.items.findIndex((it) => it.id === itemId);
+  const next = plan.items[i + 1];
+  if (!next) return null;
+  const info = itemInfo(next);
+  const src = sourceOf({ kind: 'item', id: next.id });
+  const first = src?.slides[0];
+  if (!first) return { title: info.title, text: info.sub };
+  return first.mediaType ? { title: info.title, mediaType: first.mediaType, name: first.label } : { title: info.title, text: first.text };
 }
 
 // Seleciona o item vizinho do roteiro, sem projetar: o próximo "→" projeta o primeiro slide dele.
@@ -219,56 +310,46 @@ function nextServiceDate() {
   return localDate(d);
 }
 
-function fmtDate(iso) {
+function fmtDate(iso, opts = { weekday: 'long', day: 'numeric', month: 'long' }) {
   if (!iso) return '';
   const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+  return new Date(y, m - 1, d).toLocaleDateString('pt-BR', opts);
 }
 
 function itemInfo(item) {
   if (item.type === 'song') {
     const s = songById(item.songId);
-    return s ? { icon: '♪', title: s.title, sub: songMeta(s) } : { icon: '♪', title: '(música excluída)', sub: '' };
+    return s ? { icon: 'music', title: s.title, sub: songMeta(s) } : { icon: 'music', title: '(música excluída)', sub: '' };
   }
-  if (item.type === 'timer') return { icon: '⏱', title: item.message || 'Timer', sub: `Timer · ${item.minutes} min` };
-  const n = item.slides.length;
-  return { icon: '▣', title: item.title || 'Telas', sub: `Telas · ${n} slide${n === 1 ? '' : 's'}` };
+  if (item.type === 'timer') return { icon: 'timer', title: item.message || 'Timer', sub: `Timer · ${item.minutes} min` };
+  if (item.type === 'audio') {
+    const m = mediaById(item.mediaId);
+    return { icon: 'waveform', title: m ? m.name : '(áudio excluído)', sub: 'Áudio' };
+  }
+  return { icon: 'rectangles', title: item.title || 'Telas', sub: `Telas · ${plural(item.slides.length, 'slide', 'slides')}` };
 }
 
 function isItemLive(item) {
-  if (!live && show.content?.type !== 'timer') return false;
   if (item.type === 'song') return live?.key === 'song:' + item.songId && onAirSlide();
   if (item.type === 'slides') return live?.key === 'item:' + item.id && onAirSlide();
+  if (item.type === 'audio') return nowPlaying?.id === item.mediaId && !audio.paused;
   return show.content?.type === 'timer' && timer.itemId === item.id;
 }
 
+const sortedPlans = () => [...plans].sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.name.localeCompare(b.name));
 let dragIndex = null;
-const isPlanDrag = (e) =>
-  e.dataTransfer.types.includes('application/x-song-id') || e.dataTransfer.types.includes('application/x-plan-index');
-
-// Soltar uma música no espaço vazio do roteiro adiciona no fim.
-$('#planItems').addEventListener('dragover', (e) => isPlanDrag(e) && e.preventDefault());
-$('#planItems').addEventListener('drop', (e) => {
-  const songId = e.dataTransfer.getData('application/x-song-id');
-  if (!songId) return;
-  e.preventDefault();
-  addSongToPlan(songId);
-});
+const isPlanDrag = (e) => e.dataTransfer.types.includes('application/x-song-id') || e.dataTransfer.types.includes('application/x-plan-index');
 
 function renderPlan() {
-  const sorted = [...plans].sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.name.localeCompare(b.name));
-  $('#planSelect').replaceChildren(
-    ...(sorted.length
-      ? sorted.map((p) => h('option', { value: p.id, textContent: `${fmtDate(p.date)} · ${p.name}`, selected: p.id === planId }))
-      : [h('option', { textContent: 'Nenhum roteiro ainda', disabled: true, selected: true })]),
-  );
   const plan = currentPlan();
-  ['#planEdit', '#planDup', '#planDel'].forEach((s) => ($(s).disabled = !plan));
+  $('#planTitle').textContent = plan ? plan.name : 'Nenhum roteiro';
+  const date = plan ? fmtDate(plan.date) : 'Clique para criar';
+  $('#planDate').textContent = date.charAt(0).toUpperCase() + date.slice(1);
   $('#planEmpty').textContent = !plan
-    ? 'Clique em Novo, ou use o + ao lado de uma música da biblioteca.'
+    ? 'Use o + para começar um roteiro.'
     : plan.items.length
       ? ''
-      : 'Roteiro vazio. Use o + nas músicas da biblioteca, ou + Timer / + Aviso.';
+      : 'Roteiro vazio. Use o + ou arraste músicas para cá.';
   $('#planEmpty').classList.toggle('hidden', !!plan && plan.items.length > 0);
 
   $('#planItems').replaceChildren(
@@ -280,16 +361,22 @@ function renderPlan() {
           className: [
             selected?.kind === 'item' && selected.id === item.id && 'selected',
             isItemLive(item) && 'is-live',
-            item.type === 'song' && !songById(item.songId) && 'broken',
+            info.title.startsWith('(') && 'broken',
           ]
             .filter(Boolean)
             .join(' '),
           draggable: true,
           onclick: () => select({ kind: 'item', id: item.id }),
-          ondblclick: () => {
-            if (item.type === 'song') songById(item.songId) && openEditor(songById(item.songId));
-            else if (item.type === 'slides') openSlidesDialog(item);
-            else openItemDialog(item);
+          ondblclick: () => editItem(item),
+          oncontextmenu: async (e) => {
+            e.preventDefault();
+            const choice = await api.popupMenu([
+              { id: 'edit', label: 'Editar…' },
+              { type: 'separator' },
+              { id: 'remove', label: 'Tirar do roteiro' },
+            ]);
+            if (choice === 'edit') editItem(item);
+            if (choice === 'remove') removeItem(item.id);
           },
           ondragstart: (e) => {
             dragIndex = i;
@@ -315,21 +402,29 @@ function renderPlan() {
           },
         },
         h('span', { className: 'n', textContent: i + 1 }),
-        h('span', { className: 'ic', textContent: info.icon }),
+        h('span', { className: 'ic' }, icon(info.icon)),
         h('div', { className: 'body' }, h('div', { className: 't', textContent: info.title }), info.sub ? h('div', { className: 's', textContent: info.sub }) : null),
-        h('button', {
-          className: 'rm',
-          textContent: '✕',
-          title: 'Tirar do roteiro',
-          onclick: (e) => {
-            e.stopPropagation();
-            removeItem(item.id);
-          },
-        }),
       );
       return li;
     }),
   );
+}
+
+function editItem(item) {
+  if (item.type === 'song') return songById(item.songId) && openEditor(songById(item.songId));
+  if (item.type === 'slides') return openSlidesDialog(item);
+  if (item.type === 'timer') return openItemDialog(item);
+}
+
+// Soltar uma música no espaço vazio do roteiro adiciona no fim.
+for (const el of [$('#planItems'), $('#planEmpty')]) {
+  el.addEventListener('dragover', (e) => isPlanDrag(e) && e.preventDefault());
+  el.addEventListener('drop', (e) => {
+    const songId = e.dataTransfer.getData('application/x-song-id');
+    if (!songId) return;
+    e.preventDefault();
+    addSongToPlan(songId);
+  });
 }
 
 async function savePlan(plan) {
@@ -388,9 +483,63 @@ async function reorderItem(from, to) {
   renderPlan();
 }
 
-$('#planSelect').onchange = (e) => openPlanById(e.target.value);
+async function replaceItem(updated) {
+  const plan = currentPlan();
+  await savePlan({ ...plan, items: plan.items.map((i) => (i.id === updated.id ? updated : i)) });
+}
 
-// Diálogo de criar/editar roteiro.
+// Menu do título: trocar de roteiro e criar/editar/duplicar/excluir.
+$('#planMenu').onclick = async () => {
+  const plan = currentPlan();
+  const choice = await api.popupMenu([
+    ...sortedPlans()
+      .slice(0, 20)
+      .map((p) => ({ id: 'open:' + p.id, label: `${p.name} — ${fmtDate(p.date, { day: '2-digit', month: '2-digit' })}`, checked: p.id === planId })),
+    ...(plans.length ? [{ type: 'separator' }] : []),
+    { id: 'new', label: 'Novo roteiro…' },
+    { id: 'edit', label: 'Editar nome e data…', enabled: !!plan },
+    { id: 'dup', label: 'Duplicar roteiro…', enabled: !!plan },
+    { type: 'separator' },
+    { id: 'delete', label: 'Excluir roteiro…', enabled: !!plan },
+  ]);
+  if (!choice) return;
+  if (choice.startsWith('open:')) return openPlanById(choice.slice(5));
+  if (choice === 'delete') return deletePlan();
+  openPlanDialog(choice);
+};
+
+async function deletePlan() {
+  const plan = currentPlan();
+  if (!plan || !confirm(`Excluir o roteiro "${plan.name}"? As músicas e arquivos continuam na biblioteca.`)) return;
+  await api.deletePlan(plan.id);
+  plans = plans.filter((p) => p.id !== plan.id);
+  openPlanById(sortedPlans()[0]?.id || null);
+}
+
+// Botão + do roteiro.
+$('#addItemBtn').onclick = async () => {
+  const audios = libraryMedia().filter((m) => m.type === 'audio');
+  const choice = await api.popupMenu([
+    { id: 'song', label: 'Música…' },
+    { id: 'timer', label: 'Timer…' },
+    { id: 'slides', label: 'Telas (texto, imagem, vídeo, PowerPoint)…' },
+    {
+      label: 'Áudio',
+      submenu: audios.length ? audios.map((m) => ({ id: 'audio:' + m.id, label: m.name })) : [{ id: 'none', label: 'Nenhum áudio na biblioteca', enabled: false }],
+    },
+  ]);
+  if (choice === 'song') {
+    showView('songs');
+    $('#search').focus();
+  } else if (choice === 'timer') openItemDialog({ type: 'timer', minutes: 5, message: timer.message, endMessage: timer.endMessage });
+  else if (choice === 'slides') openSlidesDialog({ type: 'slides', title: '', slides: [] });
+  else if (choice?.startsWith('audio:')) {
+    const added = await addItem({ type: 'audio', mediaId: choice.slice(6) });
+    select({ kind: 'item', id: added.id });
+  }
+};
+
+// Folha de criar/editar/duplicar roteiro.
 const planDialog = $('#planDialog');
 const planForm = $('#planForm');
 let planEditing = null; // null = novo; objeto = editar; { copyOf } = duplicar
@@ -409,30 +558,15 @@ function openPlanDialog(mode) {
 planForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const fields = { name: planForm.name.value.trim(), date: planForm.date.value };
-  let plan;
-  if (planEditing?.copyOf) {
-    plan = { ...fields, items: planEditing.copyOf.items.map((i) => ({ ...i, id: uid() })) };
-  } else {
-    plan = { ...(planEditing || { items: [] }), ...fields };
-  }
+  const plan = planEditing?.copyOf
+    ? { ...fields, items: planEditing.copyOf.items.map((i) => ({ ...i, id: uid() })) }
+    : { ...(planEditing || { items: [] }), ...fields };
   const saved = await savePlan(plan);
   planDialog.close();
   openPlanById(saved.id);
 });
 
-$('#planNew').onclick = () => openPlanDialog('new');
-$('#planEdit').onclick = () => currentPlan() && openPlanDialog('edit');
-$('#planDup').onclick = () => currentPlan() && openPlanDialog('dup');
-$('#planDel').onclick = async () => {
-  const plan = currentPlan();
-  if (!plan || !confirm(`Excluir o roteiro "${plan.name}"? As músicas continuam na biblioteca.`)) return;
-  await api.deletePlan(plan.id);
-  plans = plans.filter((p) => p.id !== plan.id);
-  const next = [...plans].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
-  openPlanById(next ? next.id : null);
-};
-
-// Diálogo do timer do roteiro.
+// Folha do timer do roteiro.
 const itemDialog = $('#itemDialog');
 const itemForm = $('#itemForm');
 let itemEditing = null;
@@ -467,14 +601,7 @@ itemForm.addEventListener('submit', async (e) => {
   renderAll();
 });
 
-async function replaceItem(updated) {
-  const plan = currentPlan();
-  await savePlan({ ...plan, items: plan.items.map((i) => (i.id === updated.id ? updated : i)) });
-}
-
-$('#addTimer').onclick = () =>
-  openItemDialog({ type: 'timer', minutes: 5, message: timer.message, endMessage: timer.endMessage });
-$('#addSlides').onclick = () => openSlidesDialog({ type: 'slides', title: '', slides: [] });
+document.querySelectorAll('dialog [data-close]').forEach((b) => (b.onclick = () => b.closest('dialog').close()));
 
 // ---------- editor de telas (textos, imagens, vídeos, PowerPoint) ----------
 
@@ -484,7 +611,8 @@ let slidesEditing = null;
 let sdSlides = []; // cópia de trabalho; só vai para o roteiro ao salvar
 
 const DOC_EXT = ['pdf', 'ppt', 'pptx', 'key', 'odp'];
-const MEDIA_EXT = ['mp4', 'mov', 'm4v', 'webm', 'jpg', 'jpeg', 'png', 'gif', 'webp'];
+const VISUAL_EXT = ['mp4', 'mov', 'm4v', 'webm', 'jpg', 'jpeg', 'png', 'gif', 'webp'];
+const AUDIO_EXT = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'];
 const extOf = (name) => (name.split('.').pop() || '').toLowerCase();
 
 function openSlidesDialog(item) {
@@ -507,9 +635,7 @@ function moveSd(i, delta) {
 function renderSdList() {
   const list = $('#sdList');
   if (!sdSlides.length) {
-    list.replaceChildren(
-      h('div', { className: 'sd-empty muted', textContent: 'Nenhum slide ainda. Use os botões abaixo ou arraste arquivos para cá.' }),
-    );
+    list.replaceChildren(h('div', { className: 'sd-empty', textContent: 'Nenhum slide ainda. Use os botões abaixo ou arraste arquivos para cá.' }));
     return;
   }
   list.replaceChildren(
@@ -519,23 +645,23 @@ function renderSdList() {
         body = h('textarea', {
           value: sl.text,
           rows: Math.min(8, Math.max(2, sl.text.split('\n').length)),
-          placeholder: 'Texto do slide (ex.: versículo, título, aviso)',
+          placeholder: 'Texto do slide (versículo, título, aviso…)',
           oninput: (e) => (sl.text = e.target.value),
         });
       } else {
-        const view = slideView(sl);
+        const v = slideView(sl);
         body = h(
           'div',
           { className: 'sd-media' },
-          thumb(view),
+          face(v),
           h(
             'div',
             {},
-            h('div', { textContent: view.label }),
+            h('div', { textContent: v.label }),
             sl.type === 'video'
               ? h(
                   'label',
-                  { className: 'check small' },
+                  { className: 'ins-check small' },
                   h('input', { type: 'checkbox', checked: !!sl.loop, onchange: (e) => (sl.loop = e.target.checked) }),
                   'Repetir em loop',
                 )
@@ -551,11 +677,11 @@ function renderSdList() {
         h(
           'div',
           { className: 'sd-tools' },
-          h('button', { type: 'button', className: 'mini', textContent: '↑', title: 'Subir', onclick: () => moveSd(i, -1) }),
-          h('button', { type: 'button', className: 'mini', textContent: '↓', title: 'Descer', onclick: () => moveSd(i, 1) }),
+          h('button', { type: 'button', className: 'btn', textContent: '↑', title: 'Subir', onclick: () => moveSd(i, -1) }),
+          h('button', { type: 'button', className: 'btn', textContent: '↓', title: 'Descer', onclick: () => moveSd(i, 1) }),
           h('button', {
             type: 'button',
-            className: 'mini danger',
+            className: 'btn danger',
             textContent: '✕',
             title: 'Remover',
             onclick: () => {
@@ -570,12 +696,12 @@ function renderSdList() {
 }
 
 function addMediaSlides(items) {
-  for (const m of items) sdSlides.push({ id: uid(), type: m.type, mediaId: m.id, loop: false });
+  for (const m of items) if (m.type !== 'audio') sdSlides.push({ id: uid(), type: m.type, mediaId: m.id, loop: false });
   renderSdList();
   $('#sdList').lastElementChild?.scrollIntoView({ block: 'nearest' });
 }
 
-// Converte cada página do PDF numa imagem de 1920 px de largura e guarda na biblioteca.
+// Converte cada página do PDF numa imagem de 1920 px de largura e guarda na pasta de dados.
 async function importDoc(doc) {
   if (!doc) return;
   const status = $('#sdStatus');
@@ -600,7 +726,7 @@ async function importDoc(doc) {
     const added = await api.saveImages(images);
     media = await api.listMedia();
     addMediaSlides(added);
-    status.textContent = `${added.length} páginas importadas de "${doc.name}".`;
+    status.textContent = `${plural(added.length, 'página importada', 'páginas importadas')} de "${doc.name}".`;
   } catch (e) {
     status.textContent = '';
     alert('Não consegui ler o arquivo: ' + e.message);
@@ -609,11 +735,11 @@ async function importDoc(doc) {
 
 async function importFiles(files) {
   const paths = files.map((f) => api.pathForFile(f)).filter(Boolean);
-  const mediaPaths = paths.filter((p) => MEDIA_EXT.includes(extOf(p)));
+  const mediaPaths = paths.filter((p) => VISUAL_EXT.includes(extOf(p)));
   const docPaths = paths.filter((p) => DOC_EXT.includes(extOf(p)));
   if (mediaPaths.length) {
     $('#sdStatus').textContent = 'Copiando arquivos…';
-    const added = await api.importMedia(mediaPaths, 'slide');
+    const added = await api.importMedia(mediaPaths, 'library');
     media = await api.listMedia();
     addMediaSlides(added);
     $('#sdStatus').textContent = '';
@@ -630,7 +756,7 @@ $('#sdText').onclick = () => {
   $('#sdList').lastElementChild?.querySelector('textarea')?.focus();
 };
 $('#sdMedia').onclick = async () => {
-  const added = await api.pickMedia('slide');
+  const added = await api.pickMedia('library', ['image', 'video']);
   media = await api.listMedia();
   addMediaSlides(added);
 };
@@ -640,6 +766,7 @@ $('#sdDoc').onclick = async () => {
   $('#sdStatus').textContent = '';
   await importDoc(doc);
 };
+$('#sdLibrary').onclick = async () => addMediaSlides(await pickFromLibrary());
 
 slidesForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -663,26 +790,54 @@ slidesForm.addEventListener('submit', async (e) => {
   renderAll();
 });
 
-document.querySelectorAll('dialog [data-close]').forEach((b) => (b.onclick = () => b.closest('dialog').close()));
+// Folha "Escolher da biblioteca": devolve as imagens/vídeos marcados, na ordem em que foram marcados.
+function pickFromLibrary() {
+  return new Promise((resolve) => {
+    const dialog = $('#pickerDialog');
+    const chosen = [];
+    const items = libraryMedia().filter((m) => m.type !== 'audio' && !m.missing);
+    const count = () => ($('#pickerCount').textContent = chosen.length ? plural(chosen.length, 'selecionado', 'selecionados') : '');
+    $('#pickerGrid').replaceChildren(
+      ...items.map((m) => {
+        const tile = mediaTile(m, {
+          onclick: () => {
+            const i = chosen.indexOf(m);
+            if (i >= 0) chosen.splice(i, 1);
+            else chosen.push(m);
+            tile.classList.toggle('selected', chosen.includes(m));
+            count();
+          },
+        });
+        return tile;
+      }),
+    );
+    count();
+    const form = $('#pickerForm');
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      dialog.close('ok');
+    };
+    // Fechar com Esc ou Cancelar não adiciona nada.
+    dialog.onclose = () => resolve(dialog.returnValue === 'ok' ? chosen : []);
+    dialog.returnValue = '';
+    dialog.showModal();
+  });
+}
 
-// ---------- biblioteca ----------
+// ---------- músicas ----------
 
 function renderSongList() {
   const q = normalize($('#search').value);
   const list = songs
     .filter((s) => !q || normalize([s.title, s.artist, (s.tags || []).join(' '), s.lyrics].join(' ')).includes(q))
     .sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
+  $('#songsEmpty').classList.toggle('hidden', songs.length > 0);
   $('#songList').replaceChildren(
     ...list.map((s) =>
       h(
         'li',
         {
-          className: [
-            selected?.kind === 'song' && selected.id === s.id && 'selected',
-            live?.key === 'song:' + s.id && 'is-live',
-          ]
-            .filter(Boolean)
-            .join(' '),
+          className: selected?.kind === 'song' && selected.id === s.id ? 'selected' : '',
           onclick: () => select({ kind: 'song', id: s.id }),
           ondblclick: () => openEditor(s),
           draggable: true,
@@ -691,26 +846,29 @@ function renderSongList() {
             e.dataTransfer.effectAllowed = 'copy';
           },
         },
-        h('div', { className: 'body' }, h('div', { className: 't', textContent: s.title }), songMeta(s) ? h('div', { className: 's', textContent: songMeta(s) }) : null),
-        h('button', {
-          className: 'add',
-          textContent: '+',
-          title: 'Adicionar ao roteiro',
-          onclick: (e) => {
-            e.stopPropagation();
-            addSongToPlan(s.id);
+        h('span', { className: 'c1', textContent: s.title }),
+        h('span', { className: 'c2', textContent: s.artist || '' }),
+        h('span', { className: 'c3', textContent: s.key ? `Tom ${s.key}` : '' }),
+        h(
+          'button',
+          {
+            className: 'add',
+            title: 'Adicionar ao roteiro',
+            onclick: (e) => {
+              e.stopPropagation();
+              addSongToPlan(s.id);
+            },
           },
-        }),
+          icon('plus'),
+        ),
       ),
     ),
   );
-  $('#songCount').textContent = q ? `${list.length} de ${songs.length} músicas` : `${songs.length} músicas no banco`;
+  $('#songCount').textContent = q ? `${list.length} de ${plural(songs.length, 'música', 'músicas')}` : plural(songs.length, 'música', 'músicas');
 }
 
 $('#search').addEventListener('input', renderSongList);
 $('#addToPlan').onclick = () => selected?.kind === 'song' && addSongToPlan(selected.id);
-
-// ---------- editor de música ----------
 
 const editor = $('#editor');
 const form = $('#editorForm');
@@ -719,16 +877,7 @@ let editing = null;
 function renderEditorPreview() {
   const slides = slidesOf(form.lyrics.value);
   $('#edCount').textContent = slides.length;
-  $('#edSlides').replaceChildren(
-    ...slides.map((s, i) =>
-      h(
-        'div',
-        { className: 'slide' },
-        h('div', { className: 'lbl' }, h('span', { textContent: s.label || '\u00a0' }), h('span', { textContent: i + 1 })),
-        h('div', { className: 'txt', textContent: s.text }),
-      ),
-    ),
-  );
+  $('#edSlides').replaceChildren(...slides.map((s, i) => slideCard(s, i)));
 }
 
 function openEditor(song) {
@@ -772,7 +921,10 @@ $('#edDelete').onclick = async () => {
   if (!editing || !confirm(`Excluir "${editing.title}" do banco de músicas?`)) return;
   await api.deleteSong(editing.id);
   songs = await api.listSongs();
-  if (selected?.kind === 'song' && selected.id === editing.id) selected = null;
+  if (selected?.kind === 'song' && selected.id === editing.id) {
+    selected = null;
+    showView('songs');
+  }
   if (live?.key === 'song:' + editing.id) live = null;
   editor.close();
   renderAll();
@@ -781,65 +933,139 @@ $('#edDelete').onclick = async () => {
 $('#newSong').onclick = () => openEditor(null);
 $('#editSong').onclick = () => sourceOf(selected)?.edit();
 
-// ---------- fundos ----------
+// ---------- biblioteca de mídia ----------
 
-function renderMedia() {
-  const activeId = settings.backgroundId || null;
-  const backgrounds = media.filter((m) => m.role === 'background');
-  const none = h(
-    'button',
-    { className: 'item' + (!activeId ? ' active' : ''), onclick: () => setBackground(null) },
-    h('span', { className: 'name', textContent: 'Sem fundo' }),
-  );
-  $('#mediaList').replaceChildren(
-    none,
-    ...backgrounds.map((m) =>
+function mediaTile(m, { onclick, ondblclick, oncontextmenu } = {}) {
+  const thumb =
+    m.type === 'audio'
+      ? h('div', { className: 'thumb audio' }, icon('waveform'))
+      : h(
+          'div',
+          { className: 'thumb' },
+          m.type === 'video' ? h('video', { src: m.url + '#t=1', muted: true, preload: 'metadata' }) : h('img', { src: m.url, loading: 'lazy' }),
+        );
+  if (m.type === 'video') thumb.append(h('span', { className: 'kind' }, icon('video'), 'Vídeo'));
+  if (oncontextmenu) {
+    thumb.append(
       h(
         'button',
         {
-          className: 'item' + (m.id === activeId ? ' active' : '') + (m.missing ? ' missing' : ''),
-          title: m.missing ? `Arquivo não encontrado: ${m.path}` : m.path,
-          onclick: () => !m.missing && setBackground(m),
+          className: 'more',
+          title: 'Opções',
+          onclick: (e) => {
+            e.stopPropagation();
+            oncontextmenu(e);
+          },
         },
-        m.type === 'video'
-          ? h('video', { src: m.url + '#t=1', muted: true, preload: 'metadata' })
-          : h('img', { src: m.url }),
-        h('span', { className: 'name', textContent: m.name }),
-        m.builtin
-          ? null
-          : h('span', {
-              className: 'rm',
-              textContent: '✕',
-              title: 'Excluir este fundo',
-              onclick: async (e) => {
-                e.stopPropagation();
-                if (!confirm(`Excluir o fundo "${m.name}"?`)) return;
-                if (settings.backgroundId === m.id) setBackground(null);
-                media = await api.removeMedia(m.id);
-                renderMedia();
-              },
-            }),
+        icon('ellipsis'),
       ),
-    ),
+    );
+  }
+  const sub = [MEDIA_LABEL[m.type], m.builtin ? 'Incluso no app' : m.role === 'background' ? 'Fundo' : ''].filter(Boolean).join(' · ');
+  return h(
+    'button',
+    {
+      type: 'button',
+      className: 'tile' + (m.missing ? ' missing' : ''),
+      title: m.missing ? 'Arquivo não encontrado na pasta de dados' : m.name,
+      onclick,
+      ondblclick,
+      oncontextmenu: oncontextmenu
+        ? (e) => {
+            e.preventDefault();
+            oncontextmenu(e);
+          }
+        : undefined,
+    },
+    thumb,
+    h('span', { className: 'name', textContent: m.name }),
+    h('span', { className: 'sub', textContent: sub }),
   );
 }
 
-function setBackground(m) {
-  settings.backgroundId = m ? m.id : null;
-  show.background = m ? { type: m.type, url: m.url } : null;
-  saveSettings();
-  renderMedia();
-  push();
+function renderMediaGrid() {
+  const all = libraryMedia();
+  const list = all.filter((m) => mediaFilter === 'all' || m.type === mediaFilter);
+  $('#mediaCount').textContent = plural(all.length, 'arquivo', 'arquivos');
+  $('#mediaEmpty').classList.toggle('hidden', list.length > 0);
+  $('#mediaGrid').replaceChildren(
+    ...list.map((m) => {
+      const tile = mediaTile(m, {
+        onclick: () => {
+          selectedMediaId = m.id;
+          renderMediaGrid();
+        },
+        ondblclick: () => primaryMediaAction(m),
+        oncontextmenu: () => mediaMenu(m),
+      });
+      tile.classList.toggle('selected', selectedMediaId === m.id);
+      tile.classList.toggle('live', live?.key === 'media:' + m.id && onAirSlide());
+      tile.classList.toggle('playing', nowPlaying?.id === m.id && !audio.paused);
+      return tile;
+    }),
+  );
 }
 
-$('#addMedia').onclick = async () => {
-  const added = await api.pickMedia('background');
+function primaryMediaAction(m) {
+  if (m.missing) return;
+  if (m.type === 'audio') return toggleAudio(m);
+  showMediaOnPalco(m);
+}
+
+function showMediaOnPalco(m) {
+  const v = slideView({ type: m.type, mediaId: m.id, loop: m.type === 'video' });
+  liveFrom({ key: 'media:' + m.id, title: m.name, slides: [v] }, 0);
+}
+
+async function mediaMenu(m) {
+  selectedMediaId = m.id;
+  renderMediaGrid();
+  const visual = m.type !== 'audio';
+  const choice = await api.popupMenu([
+    visual ? { id: 'show', label: 'Mostrar no Palco', enabled: !m.missing } : { id: 'play', label: 'Tocar', enabled: !m.missing },
+    visual ? { id: 'bg', label: 'Usar como fundo', enabled: !m.missing } : null,
+    { id: 'plan', label: 'Adicionar ao roteiro' },
+    ...(m.builtin ? [] : [{ type: 'separator' }, { id: 'delete', label: 'Excluir da biblioteca…' }]),
+  ].filter(Boolean));
+  if (choice === 'show') showMediaOnPalco(m);
+  if (choice === 'play') toggleAudio(m);
+  if (choice === 'bg') {
+    if (!m.builtin && m.role !== 'background') media = await api.updateMedia(m.id, { role: 'background' });
+    setBackground(mediaById(m.id));
+  }
+  if (choice === 'plan') {
+    const added = await addItem(
+      m.type === 'audio' ? { type: 'audio', mediaId: m.id } : { type: 'slides', title: m.name, slides: [{ id: uid(), type: m.type, mediaId: m.id, loop: false }] },
+    );
+    renderPlan();
+    $('#planItems').lastElementChild?.scrollIntoView({ block: 'nearest' });
+    return added;
+  }
+  if (choice === 'delete') {
+    if (!confirm(`Excluir "${m.name}" da biblioteca? Slides que usam este arquivo vão ficar sem ele.`)) return;
+    if (nowPlaying?.id === m.id) stopAudio();
+    if (settings.backgroundId === m.id) setBackground(null);
+    media = await api.removeMedia(m.id);
+    renderAll();
+    renderBackgrounds();
+  }
+}
+
+$$('#mediaFilter button').forEach((b) => {
+  b.onclick = () => {
+    mediaFilter = b.dataset.filter;
+    $$('#mediaFilter button').forEach((x) => x.classList.toggle('on', x === b));
+    renderMediaGrid();
+  };
+});
+
+$('#uploadMedia').onclick = async () => {
+  await api.pickMedia('library');
   media = await api.listMedia();
-  renderMedia();
-  if (added.length) setBackground(added[0]);
+  renderAll();
 };
 
-// Arrastar arquivos do Finder: no painel de fundos viram fundos; na lista de telas, slides.
+// Arrastar arquivos do Finder: na biblioteca, no painel de fundos ou na lista de telas.
 function dropZone(el, onFiles) {
   el.addEventListener('dragover', (e) => {
     if (!e.dataTransfer.types.includes('Files')) return;
@@ -855,18 +1081,72 @@ function dropZone(el, onFiles) {
   });
 }
 
+dropZone($('#viewMedia'), async (files) => {
+  const paths = files.map((f) => api.pathForFile(f)).filter((p) => [...VISUAL_EXT, ...AUDIO_EXT].includes(extOf(p)));
+  if (!paths.length) return;
+  await api.importMedia(paths, 'library');
+  media = await api.listMedia();
+  renderAll();
+});
 dropZone($('#mediaList'), async (files) => {
-  const paths = files.map((f) => api.pathForFile(f)).filter((p) => MEDIA_EXT.includes(extOf(p)));
+  const paths = files.map((f) => api.pathForFile(f)).filter((p) => VISUAL_EXT.includes(extOf(p)));
   if (!paths.length) return;
   const added = await api.importMedia(paths, 'background');
   media = await api.listMedia();
-  renderMedia();
+  renderAll();
   if (added.length) setBackground(added[0]);
 });
 dropZone($('#sdList'), importFiles);
 // Soltar um arquivo fora das áreas certas não deve abrir o arquivo na janela.
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', (e) => e.preventDefault());
+
+// ---------- fundos ----------
+
+function renderBackgrounds() {
+  const activeId = settings.backgroundId || null;
+  const backgrounds = media.filter((m) => m.role === 'background' && m.type !== 'audio');
+  $('#mediaList').replaceChildren(
+    h('button', { className: 'bg-item' + (!activeId ? ' active' : ''), title: 'Sem fundo', onclick: () => setBackground(null) }, h('span', { className: 'name', textContent: 'Sem fundo' })),
+    ...backgrounds.map((m) =>
+      h(
+        'button',
+        {
+          className: 'bg-item' + (m.id === activeId ? ' active' : ''),
+          title: m.missing ? 'Arquivo não encontrado' : m.name,
+          onclick: () => !m.missing && setBackground(m),
+          oncontextmenu: async (e) => {
+            e.preventDefault();
+            if (m.builtin) return;
+            const choice = await api.popupMenu([{ id: 'remove', label: 'Tirar dos fundos' }]);
+            if (choice !== 'remove') return;
+            if (settings.backgroundId === m.id) setBackground(null);
+            media = await api.updateMedia(m.id, { role: 'library' });
+            renderBackgrounds();
+            renderMediaGrid();
+          },
+        },
+        m.type === 'video' ? h('video', { src: m.url + '#t=1', muted: true, preload: 'metadata' }) : h('img', { src: m.url }),
+        h('span', { className: 'name', textContent: m.name }),
+      ),
+    ),
+  );
+}
+
+function setBackground(m) {
+  settings.backgroundId = m ? m.id : null;
+  show.background = m ? { type: m.type, url: m.url } : null;
+  saveSettings();
+  renderBackgrounds();
+  push();
+}
+
+$('#addMedia').onclick = async () => {
+  const added = await api.pickMedia('background', ['image', 'video']);
+  media = await api.listMedia();
+  renderAll();
+  if (added.length) setBackground(added[0]);
+};
 
 $('#vPlay').onclick = () => {
   if (show.content?.type !== 'media') return;
@@ -878,7 +1158,6 @@ $('#vRestart').onclick = () => {
   show.content = { ...show.content, playing: true, seq: ++mediaSeq };
   push();
 };
-
 
 // ---------- aparência do texto ----------
 
@@ -911,7 +1190,7 @@ function bindTheme() {
   };
 }
 
-// ---------- telão ----------
+// ---------- telas de saída ----------
 
 $('#blackBtn').onclick = () => {
   show.black = !show.black;
@@ -922,52 +1201,127 @@ $('#hideBtn').onclick = () => {
   push();
 };
 
-async function renderDisplays(list) {
-  const displays = list || (await api.listDisplays());
-  const sel = $('#displaySelect');
-  const preferred = displays.find((d) => d.id === settings.displayId) || displays.find((d) => !d.primary) || displays[0];
-  sel.replaceChildren(...displays.map((d) => h('option', { value: d.id, textContent: d.label, selected: d === preferred })));
+for (const btn of $$('.output')) {
+  btn.onclick = async () => {
+    const role = btn.dataset.role;
+    const displays = await api.listDisplays();
+    const assigned = settings.outputs?.[role];
+    const choice = await api.popupMenu([
+      { id: 'x', label: role === 'palco' ? 'Mostrar o Palco em:' : 'Mostrar o Retorno em:', enabled: false },
+      ...displays.map((d) => ({ id: 'd:' + d.id, label: d.label, checked: outputs[role] && assigned === d.id })),
+      { type: 'separator' },
+      { id: 'off', label: 'Desligar', enabled: outputs[role] },
+    ]);
+    if (!choice) return;
+    if (choice === 'off') return api.closeOutput(role);
+    const id = Number(choice.slice(2));
+    settings.outputs = { ...settings.outputs, [role]: id };
+    saveSettings();
+    api.openOutput(role, id);
+  };
 }
 
-$('#displaySelect').onchange = (e) => {
-  settings.displayId = Number(e.target.value);
-  saveSettings();
-  if (projectionOpen) api.openProjection(settings.displayId);
-};
-
-$('#projBtn').onclick = () => {
-  if (projectionOpen) api.closeProjection();
-  else api.openProjection(Number($('#displaySelect').value));
-};
-
-api.onProjectionStatus((open) => {
-  projectionOpen = open;
-  $('#projBtn').textContent = open ? 'Fechar projeção' : 'Abrir projeção';
-  $('#projBtn').classList.toggle('primary', !open);
+api.onOutputStatus((status) => {
+  outputs = status;
   push();
 });
-api.onDisplaysChanged((list) => renderDisplays(list));
 
-// ---------- abas ----------
+// ---------- áudio ----------
 
-function showTab(name) {
-  document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x.dataset.tab === name));
-  $('#songsPanel').classList.toggle('hidden', name !== 'songs');
-  $('#timerPanel').classList.toggle('hidden', name !== 'timer');
+const audio = $('#audio');
+let nowPlaying = null;
+
+function toggleAudio(m) {
+  if (nowPlaying?.id === m.id) {
+    if (audio.paused) audio.play();
+    else audio.pause();
+    return;
+  }
+  nowPlaying = m;
+  audio.src = m.url;
+  audio.play().catch((e) => alert('Não consegui tocar este áudio: ' + e.message));
+  renderPlayer();
 }
 
-document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
+function stopAudio() {
+  audio.pause();
+  audio.removeAttribute('src');
+  audio.load();
+  nowPlaying = null;
+  renderPlayer();
+  renderPlan();
+  renderMediaGrid();
+}
+
+function renderPlayer() {
+  $('#player').classList.toggle('hidden', !nowPlaying);
+  if (nowPlaying) {
+    $('#plName').textContent = nowPlaying.name;
+    $('#plTime').textContent = clock(audio.currentTime);
+    $('#plDur').textContent = clock(audio.duration);
+    $('#plSeek').value = audio.duration ? (audio.currentTime / audio.duration) * 1000 : 0;
+    const name = audio.paused ? 'play' : 'pause';
+    if ($('#plPlay').dataset.icon !== name) Icons.set($('#plPlay'), name);
+    $('#plPlay').title = audio.paused ? 'Tocar' : 'Pausar';
+  }
+  if (view === 'audio') renderAudioView();
+}
+
+function selectedAudio() {
+  const item = selected?.kind === 'item' ? planItem(selected.id) : null;
+  return item?.type === 'audio' ? mediaById(item.mediaId) : null;
+}
+
+function renderAudioView() {
+  const m = selectedAudio();
+  $('#audioTitle').textContent = m ? m.name : '(áudio excluído)';
+  const mine = m && nowPlaying?.id === m.id;
+  const playing = mine && !audio.paused;
+  const btn = $('#audioBigPlay');
+  if (btn.dataset.icon !== (playing ? 'pause' : 'play')) Icons.set(btn, playing ? 'pause' : 'play');
+  btn.title = playing ? 'Pausar' : 'Tocar';
+  $('#audioBigTime').textContent = clock(mine ? audio.currentTime : 0);
+  $('#audioBigDur').textContent = clock(mine ? audio.duration : NaN);
+  $('#audioBigSeek').value = mine && audio.duration ? (audio.currentTime / audio.duration) * 1000 : 0;
+}
+
+for (const ev of ['play', 'pause', 'timeupdate', 'loadedmetadata', 'ended']) {
+  audio.addEventListener(ev, () => {
+    renderPlayer();
+    if (['play', 'pause', 'ended'].includes(ev)) {
+      renderPlan();
+      renderMediaGrid();
+    }
+  });
+}
+$('#plPlay').onclick = () => nowPlaying && (audio.paused ? audio.play() : audio.pause());
+$('#plStop').onclick = stopAudio;
+$('#plSeek').oninput = (e) => audio.duration && (audio.currentTime = (e.target.value / 1000) * audio.duration);
+$('#plVol').oninput = (e) => (audio.volume = Number(e.target.value));
+$('#audioBigPlay').onclick = () => {
+  const m = selectedAudio();
+  if (m && !m.missing) toggleAudio(m);
+};
+$('#audioBigSeek').oninput = (e) => {
+  const m = selectedAudio();
+  if (m && nowPlaying?.id === m.id && audio.duration) audio.currentTime = (e.target.value / 1000) * audio.duration;
+};
 
 // ---------- timer ----------
 
 const timerRunning = () => timer.endAt != null;
 
+function renderTimerDisplay() {
+  const ms = remaining(timer);
+  $('#tDisplay').textContent = fmt(ms);
+  $('#tDisplay').classList.toggle('warn', ms > 0 && ms <= 60000);
+}
+setInterval(renderTimerDisplay, 250);
+
 function syncTimer() {
-  if (show.content?.type === 'timer') {
-    show.content = { type: 'timer', ...timer };
-    push();
-  }
-  $('#tStart').textContent = timerRunning() ? '❚❚ Pausar' : '▶ Iniciar';
+  if (show.content?.type === 'timer') show.content = { type: 'timer', ...timer };
+  push(); // o Retorno mostra o timer mesmo quando ele não está no Palco
+  $('#tStart').textContent = timerRunning() ? 'Pausar' : 'Iniciar';
   renderTimerDisplay();
   $('#tMsg').value = timer.message;
   $('#tEnd').value = timer.endMessage;
@@ -1007,7 +1361,7 @@ $('#tLoad').onclick = () => {
   renderPlan();
 };
 
-document.querySelectorAll('.presets button').forEach((b) => {
+$$('.presets button').forEach((b) => {
   b.onclick = () => {
     $('#tMin').value = b.dataset.min;
     $('#tSec').value = 0;
@@ -1060,25 +1414,84 @@ $('#tProject').onclick = () => {
   renderAll();
 };
 
-function renderTimerDisplay() {
-  const ms = remaining(timer);
-  $('#tDisplay').textContent = fmt(ms);
-  $('#tDisplay').classList.toggle('warn', ms > 0 && ms <= 60000);
-}
-setInterval(renderTimerDisplay, 250);
+// ---------- ajustes: onde guardar os dados ----------
 
-// ---------- teclado ----------
+const settingsDialog = $('#settingsDialog');
+const settingsForm = $('#settingsForm');
+let storage = null;
+let customFolder = null;
+
+async function openSettings() {
+  storage = await api.getStorage();
+  customFolder = storage.mode === 'custom' ? storage.path : null;
+  const pretty = (p) => (p && p.startsWith(storage.home) ? '~' + p.slice(storage.home.length) : p);
+  $('#stLocal').textContent = pretty(storage.local);
+  $('#stDrive').textContent = storage.drive ? pretty(storage.drive) : 'Google Drive para computador não encontrado neste Mac.';
+  $('#stDriveGet').classList.toggle('hidden', !!storage.drive);
+  settingsForm.querySelector('input[value="drive"]').disabled = !storage.drive;
+  $('#stCustom').textContent = pretty(customFolder) || 'Escolher…';
+  settingsForm.querySelector(`input[value="${storage.mode}"]`).checked = true;
+  settingsDialog.showModal();
+}
+
+settingsForm.querySelector('input[value="custom"]').addEventListener('click', async () => {
+  const folder = await api.pickStorageFolder();
+  if (folder) {
+    customFolder = folder;
+    $('#stCustom').textContent = folder;
+  } else if (!customFolder) {
+    settingsForm.querySelector(`input[value="${storage.mode}"]`).checked = true;
+  }
+});
+$('#stDriveGet').onclick = (e) => {
+  e.preventDefault();
+  api.openExternal('https://www.google.com/drive/download/');
+};
+$('#stReveal').onclick = () => api.revealStorage();
+$('#settingsBtn').onclick = openSettings;
+
+settingsForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const mode = settingsForm.storage.value;
+  const target = mode === 'custom' ? customFolder : mode;
+  const targetPath = mode === 'local' ? storage.local : mode === 'drive' ? storage.drive : customFolder;
+  if (!target || targetPath === storage.path) return settingsDialog.close();
+  if (!confirm(`Guardar músicas, roteiros e arquivos em:\n${targetPath}\n\nSe a pasta já tiver dados do app, eles serão usados; senão, os dados atuais serão copiados para lá.`)) return;
+  const result = await api.setStorage(target);
+  if (result.error) return alert(result.error);
+  if (result.adopted) alert('Essa pasta já tinha dados do Projeção Igreja. O app vai usar esses dados.');
+  location.reload();
+});
+
+// ---------- barra lateral e teclado ----------
+
+function applySidebar() {
+  $('.app').classList.toggle('no-sidebar', !!settings.sidebarHidden);
+}
+$('#sidebarToggle').onclick = () => {
+  settings.sidebarHidden = !settings.sidebarHidden;
+  applySidebar();
+  saveSettings();
+};
 
 document.addEventListener('keydown', (e) => {
   const dialogOpen = !!document.querySelector('dialog[open]');
-  if (e.metaKey && e.key.toLowerCase() === 'n') {
+  const key = e.key.toLowerCase();
+  if (e.metaKey && key === 'n') {
     e.preventDefault();
     if (!dialogOpen) openEditor(null);
     return;
   }
-  if (e.metaKey && e.key.toLowerCase() === 'f') {
+  if (e.metaKey && key === 'f') {
     e.preventDefault();
-    if (!dialogOpen) $('#search').focus();
+    if (dialogOpen) return;
+    showView('songs');
+    $('#search').focus();
+    return;
+  }
+  if (e.metaKey && key === ',') {
+    e.preventDefault();
+    if (!dialogOpen) openSettings();
     return;
   }
   if (dialogOpen || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1089,8 +1502,8 @@ document.addEventListener('keydown', (e) => {
   // Passadores de slide enviam PageDown/PageUp.
   if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) step(1);
   else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) step(-1);
-  else if (e.key.toLowerCase() === 'b') $('#blackBtn').click();
-  else if (e.key.toLowerCase() === 'c' || e.key === 'Escape') $('#hideBtn').click();
+  else if (key === 'b') $('#blackBtn').click();
+  else if (key === 'c' || e.key === 'Escape') $('#hideBtn').click();
   else return;
   e.preventDefault();
 });
@@ -1098,8 +1511,13 @@ document.addEventListener('keydown', (e) => {
 // ---------- início ----------
 
 (async function init() {
+  const accent = await api.accentColor();
+  if (accent) document.documentElement.style.setProperty('--accent', accent);
+
   [songs, plans, media, settings] = await Promise.all([api.listSongs(), api.listPlans(), api.listMedia(), api.getSettings()]);
   settings = settings || {};
+  // Versões anteriores tinham uma única tela de projeção.
+  if (settings.displayId && !settings.outputs) settings.outputs = { palco: settings.displayId };
   show.theme = { ...DEFAULT_THEME, ...settings.theme };
   timer.message = settings.timerMessage ?? timer.message;
   timer.endMessage = settings.timerEndMessage ?? '';
@@ -1111,26 +1529,24 @@ document.addEventListener('keydown', (e) => {
   const bg = media.find((m) => m.id === settings.backgroundId && !m.missing);
   show.background = bg ? { type: bg.type, url: bg.url } : null;
   if (!bg) settings.backgroundId = null;
-  // Roteiros da versão anterior tinham "avisos" só de texto; viram itens de telas.
+  // Roteiros da primeira versão tinham "avisos" só de texto; viram itens de telas.
   for (const plan of plans) {
     if (!plan.items.some((i) => i.type === 'text')) continue;
     plan.items = plan.items.map((i) =>
-      i.type !== 'text'
-        ? i
-        : { id: i.id, type: 'slides', title: i.title, slides: slidesOf(i.text).map((sl) => ({ id: uid(), type: 'text', text: sl.text })) },
+      i.type !== 'text' ? i : { id: i.id, type: 'slides', title: i.title, slides: slidesOf(i.text).map((sl) => ({ id: uid(), type: 'text', text: sl.text })) },
     );
     await savePlan(plan);
   }
   // Abre o último roteiro usado ou, se não houver, o de data mais recente.
-  planId = plans.some((p) => p.id === settings.planId)
-    ? settings.planId
-    : [...plans].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0]?.id || null;
+  planId = plans.some((p) => p.id === settings.planId) ? settings.planId : sortedPlans()[0]?.id || null;
 
+  applySidebar();
   bindTheme();
-  renderMedia();
+  renderBackgrounds();
   syncTimer();
+  showView('slides');
   renderAll();
-  await renderDisplays();
-  projectionOpen = await api.projectionStatus();
+  api.onDisplaysChanged(() => {});
+  outputs = await api.outputStatus();
   push();
 })();

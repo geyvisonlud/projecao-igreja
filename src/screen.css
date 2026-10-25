@@ -95,3 +95,103 @@
 .screen .black.on {
   opacity: 1;
 }
+
+/* ---------- Retorno (monitor de palco) ---------- */
+.stage {
+  --u: 1vh;
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+}
+.stage .st-top {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--u));
+  padding: calc(2 * var(--u)) calc(3 * var(--u));
+  font-size: calc(4.2 * var(--u));
+  border-bottom: 1px solid #222;
+}
+.stage .st-clock,
+.stage .st-timer {
+  font-family: ui-rounded, 'SF Pro Rounded', -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.stage .st-title {
+  flex: 1;
+  color: #8e8e93;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stage .st-flags {
+  color: #ff453a;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.6em;
+  letter-spacing: 0.08em;
+}
+.stage .st-timer {
+  display: none;
+  padding: 0 0.45em;
+  border-radius: 0.3em;
+  background: #1c3d24;
+  color: #30d158;
+}
+.stage .st-timer.on {
+  display: block;
+}
+.stage .st-timer.warn {
+  background: #3d3410;
+  color: #ffd60a;
+}
+.stage .st-timer.over {
+  background: #3d1614;
+  color: #ff453a;
+}
+.stage .st-now {
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(2 * var(--u)) calc(4 * var(--u));
+  overflow: hidden;
+}
+.stage .st-now-text {
+  width: 100%;
+  text-align: center;
+  white-space: pre-line;
+  line-height: 1.2;
+  font-weight: 700;
+}
+.stage .st-now-text.media {
+  color: #8e8e93;
+  font-weight: 500;
+}
+.stage .st-next {
+  height: calc(26 * var(--u));
+  padding: calc(1.5 * var(--u)) calc(4 * var(--u)) calc(2 * var(--u));
+  border-top: 1px solid #222;
+  overflow: hidden;
+}
+.stage .st-next.empty {
+  visibility: hidden;
+}
+.stage .st-next-label {
+  font-size: calc(2.6 * var(--u));
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #ffd60a;
+  font-weight: 600;
+  margin-bottom: calc(0.8 * var(--u));
+}
+.stage .st-next-text {
+  white-space: pre-line;
+  line-height: 1.2;
+  color: #aeaeb2;
+  font-weight: 600;
+}

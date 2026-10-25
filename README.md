@@ -1,6 +1,6 @@
 # Projeção Igreja
 
-Software de apresentação para o telão da igreja (macOS). Versão 0.3: **banco de músicas**,
+Software de apresentação para o telão da igreja (macOS). Versão 0.4: **banco de músicas**,
 **roteiro do culto**, **telas com texto, imagens, vídeos e PowerPoint**, **timer** e **fundos em vídeo**.
 
 ## Como rodar no Mac
@@ -24,86 +24,98 @@ O arquivo sai em `dist/`. Como o app não é assinado pela Apple, na primeira ve
 
 ## Como usar
 
-**Telão:** ligue o projetor/TV no Mac, escolha a tela em *Telão* e clique em **Abrir projeção**.
-A projeção ocupa a tela externa inteira; o operador continua no Mac. Sem tela externa, ela abre
-numa janela para testes. Enquanto a projeção está aberta, o Mac não apaga a tela.
+A janela do app (o **Comando**) tem três partes, no estilo dos apps do Mac:
 
-**Músicas:** clique em **+ Nova** (⌘N), cole a letra e salve. As regras de divisão:
+- **Barra lateral:** o **Roteiro** do culto e a **Biblioteca** (Músicas, Mídia, Timer).
+- **Centro:** os slides do item escolhido, a lista de músicas, a biblioteca de mídia ou o timer.
+- **Inspetor (direita):** prévias das duas telas de saída, fundo, ajustes de texto e o player de áudio.
 
-- linha em branco → novo slide;
-- `[Verso 1]`, `[Refrão]`, `[Ponte]` (ou `Refrão:`) → dá nome à parte;
-- uma linha só com `[Refrão]` → repete o refrão já cadastrado;
-- blocos maiores que o limite de *Linhas por slide* são divididos automaticamente;
-- cifras e tablaturas coladas de sites de cifra são removidas.
+### As telas
 
-A busca (⌘F) procura no título, artista, tags e no texto da letra, sem diferenciar acentos.
+- **Palco**: o que o público vê (letra, imagens, vídeos com som, timer).
+- **Retorno**: monitor virado para músicos e pregador. Mostra o relógio, o timer (sempre que estiver
+  correndo), o slide atual em letra grande e, embaixo, **o que vem a seguir** (o próximo slide ou o
+  próximo item do roteiro).
+- **Comando**: a própria janela do operador, com as prévias do Palco e do Retorno.
 
-**Roteiro do culto:** na parte de cima da coluna da esquerda. Monte antes do culto:
+Nos botões **Palco** e **Retorno** da barra de cima, escolha em qual tela cada uma aparece (ou
+**Desligar**). A bolinha vermelha acende quando a tela está no ar. Sem tela externa, elas abrem em
+janelas para teste. Enquanto alguma estiver aberta, o Mac não apaga a tela.
 
-- **+** ao lado de uma música da biblioteca (ou arrastar a música para o roteiro) coloca a música
-  no roteiro. Se ainda não houver roteiro, um "Culto" é criado automaticamente;
-- **+ Timer**: contagem regressiva com duração e mensagem próprias (ex.: "Estudo da Lição", 35 min);
-- **+ Telas**: uma sequência de slides que mistura **texto** (versículos, avisos, títulos),
-  **imagens**, **vídeos** e páginas de **PowerPoint, Keynote ou PDF**. Serve para momento de
-  fidelidade, adoração infantil, oração, sermão, avisos…;
-- arraste os itens para mudar a ordem; **✕** tira do roteiro; duplo clique edita;
-- **Novo**, **Editar** (nome e data), **Duplicar** (bom para repetir o culto da semana anterior)
-  e **✕** (excluir o roteiro) ficam no cabeçalho.
+### Roteiro
 
-Durante o culto, ao chegar no último slide de um item, **→** seleciona o próximo item do roteiro
-sem projetá-lo; o próximo **→** projeta o primeiro slide dele. Assim dá para fazer uma pausa entre
-as músicas. Selecionar um timer do roteiro carrega a duração e as mensagens dele na aba Timer;
-depois é só **Iniciar** e **Projetar**. Se um timer já estiver correndo (por exemplo o da Lição),
-selecionar o próximo não mexe nele: aparece o botão **Carregar** para trocar na hora certa.
+O nome do roteiro aparece no alto; clique nele para trocar de roteiro, criar, renomear, duplicar ou
+excluir. O **+** ao lado de "Roteiro" adiciona **Música**, **Timer**, **Telas** (texto, imagens,
+vídeos e PowerPoint) ou **Áudio**. Também dá para arrastar músicas da lista para o roteiro e
+arrastar os itens para mudar a ordem. Botão direito num item: **Editar** ou **Tirar do roteiro**.
 
-Exemplo de culto montado assim: Timer "Estudo da Lição" 35 min → Timer "O culto começa em" 5 min →
-Música 1 → Telas "Momento de fidelidade" → Música 2 → Telas "Adoração infantil" (vídeo) → Música 3 →
-Telas "Momento de oração" → Telas "Sermão" (PowerPoint + versículos) → Música 4 → Telas "Avisos".
-
-**Telas:** no editor (**+ Telas**), use **+ Texto**, **+ Imagem ou vídeo** e
-**+ PowerPoint / Keynote / PDF**, ou arraste arquivos do Finder para a lista. Cada página da
-apresentação vira uma imagem. Para converter PowerPoint/Keynote o app usa o **Keynote** (vem
-grátis no Mac), o PowerPoint ou o LibreOffice, o que estiver instalado. Na primeira vez o macOS
-pergunta se o app pode controlar o Keynote: responda **OK**. Se nada disso funcionar, exporte a
-apresentação como PDF e importe o PDF. Vídeos das telas tocam **com som** no telão (a prévia fica
-muda); enquanto um vídeo está no ar aparecem os botões **Pausar vídeo** e **Do início**. Marque
-*Repetir em loop* no editor para vídeos que devem ficar rodando.
-
-**Durante o culto:** clique num slide para mandá-lo ao telão.
+Durante o culto, **→** avança os slides; no último slide de um item, ele seleciona o próximo item sem
+projetar, e o próximo **→** projeta. Selecionar um timer do roteiro carrega a duração dele; se outro
+timer estiver correndo, aparece **Carregar** para trocar na hora certa.
 
 | Tecla | Ação |
 | --- | --- |
 | → ↓ espaço PageDown | próximo slide |
 | ← ↑ PageUp | slide anterior |
-| B | tela preta (liga/desliga) |
-| C ou Esc | ocultar letra, deixando só o fundo |
+| B | tela preta |
+| C ou Esc | limpar (esconde a letra, fica só o fundo) |
+| ⌘N | nova música |
+| ⌘F | buscar música |
+| ⌘, | ajustes |
 
-Passadores de slide (controle remoto) funcionam, pois enviam PageDown/PageUp.
+### Músicas
 
-**Timer:** escolha a duração (ou "até as 19:00"), clique em **Iniciar** e depois em
-**Projetar timer no telão**. Dá para pausar e somar/subtrair 1 minuto com o timer no ar. No
-último minuto os números ficam amarelos; ao zerar aparece a *mensagem ao terminar*, se houver.
+Em **Músicas**, **Nova música**, cole a letra e salve. Linha em branco separa os slides; `[Verso 1]`,
+`[Refrão]`, `[Ponte]` nomeiam as partes; uma linha só com `[Refrão]` repete o refrão; cifras e
+tablaturas coladas de sites são removidas.
 
-**Fundos:** o app já vem com dois fundos em vídeo (*Roxo suave* e *Ondas brancas*). Para enviar
-outros, use **+ Enviar vídeo ou imagem** ou arraste arquivos do Finder para o painel de fundos
-(mp4, mov, m4v, webm, jpg, png…). Os arquivos são **copiados para dentro do app**, então pode
-apagar ou mover o original. Vídeos de fundo tocam em loop, sem som. Prefira vídeos em H.264
-(`.mp4`); `.mov` em ProRes não toca. Em fundos claros como *Ondas brancas*, aumente
-*Escurecer fundo* para a letra branca continuar legível.
+### Mídia (imagens, vídeos e áudios)
+
+Em **Mídia**, **Enviar arquivos** ou arraste do Finder. Os arquivos são copiados para a pasta de
+dados do app. **Duplo clique** mostra a imagem/vídeo no Palco ou toca o áudio. **Botão direito**:
+Mostrar no Palco, Tocar, **Usar como fundo**, **Adicionar ao roteiro** ou Excluir.
+
+Os **áudios** (playback, vinhetas, música ambiente) tocam pelo som do Mac, com o player no canto
+de baixo à direita (tocar/pausar, posição e volume). Não aparecem no telão.
+
+### Telas (sermão, avisos, momentos do culto)
+
+No editor de **Telas**: **Texto**, **Da biblioteca…**, **Arquivo do Mac…** e **PowerPoint, Keynote
+ou PDF…** (cada página vira um slide; a conversão usa o Keynote, o PowerPoint ou o LibreOffice, o que
+houver no Mac — na primeira vez o macOS pede permissão para controlar o Keynote). Vídeos tocam com
+som no Palco, com os botões **Pausar vídeo** e **Do início** no inspetor.
+
+### Fundos
+
+O app vem com dois fundos em vídeo (*Roxo suave* e *Ondas brancas*). **Enviar fundo…** no inspetor,
+arrastar arquivos para a área de fundos, ou **Usar como fundo** na biblioteca. Botão direito num fundo
+enviado: **Tirar dos fundos**. Em fundos claros, aumente *Escurecer fundo* em **Texto**.
+
+### Nuvem (Google Drive)
+
+Em **Ajustes** (⌘,), escolha onde guardar músicas, roteiros e arquivos:
+
+- **Neste Mac** (padrão);
+- **Google Drive**: instale o [Google Drive para computador](https://www.google.com/drive/download/)
+  e escolha esta opção. Tudo vai para a pasta *Projeção Igreja* no seu Drive, que o próprio Drive
+  sincroniza com a nuvem e com outros Macs. Se a pasta já tiver dados (de outro Mac), o app passa a
+  usá-los; senão, copia os dados atuais para lá. Use o app em um Mac por vez para não haver conflito;
+- **Outra pasta** qualquer (ex.: Dropbox, iCloud Drive, um HD externo).
 
 ## Onde ficam os dados
 
-Em `~/Library/Application Support/projecao-igreja/`: `songs.json` (músicas), `plans.json`
-(roteiros), `media.json` e a pasta `media/` (fundos, imagens, vídeos e páginas importadas) e
-`settings.json` (preferências). Para fazer backup do banco de músicas, copie o
-`songs.json`.
+Na pasta escolhida em **Ajustes** (por padrão `~/Library/Application Support/projecao-igreja/`):
+`songs.json` (músicas), `plans.json` (roteiros), `media.json` e a pasta `media/` (imagens, vídeos,
+áudios e páginas importadas). As preferências deste Mac (`settings.json`, `config.json`) ficam
+sempre na pasta do app. Para fazer backup, copie a pasta de dados.
 
 ## Estrutura
 
 - `main.js`: processo principal do Electron (janelas, telas, arquivos de dados)
 - `preload.js`: ponte segura entre as janelas e o processo principal
 - `src/operator.*`: tela do operador
-- `src/projection.*`: janela do telão
+- `src/projection.*`: tela do Palco · `src/stage.*` e `src/lib/stage-view.js`: tela de Retorno
+- `src/lib/icons.js`: ícones da interface
 - `src/lib/lyrics.js`: divisão da letra em slides (testes em `test/`, rode `npm test`)
 - `src/lib/screen-view.js`: desenha o telão; usado na projeção e na prévia do operador
 - `src/vendor/pdfjs/`: [pdf.js](https://mozilla.github.io/pdf.js/) 3.11 (Apache-2.0), para
@@ -112,6 +124,5 @@ Em `~/Library/Application Support/projecao-igreja/`: `songs.json` (músicas), `p
 
 ## Próximos passos
 
-- tela de palco (próximo slide, relógio, cronômetro da pregação)
 - fundo próprio por música, logo da igreja
 - Bíblia, avisos, controle pelo celular

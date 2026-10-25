@@ -1,6 +1,6 @@
 {
   "name": "projecao-igreja",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Software de apresentação para igreja: letras de músicas, timer e fundos em vídeo",
   "main": "main.js",
   "private": true,
