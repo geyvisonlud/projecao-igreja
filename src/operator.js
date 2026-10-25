@@ -31,6 +31,7 @@ const MEDIA_LABEL = { image: 'Imagem', video: 'Vídeo', audio: 'Áudio' };
 
 let songs = [];
 let plans = [];
+let templates = [];
 let media = [];
 let settings = {};
 let planId = null; // roteiro aberto
@@ -213,6 +214,8 @@ function select(sel) {
     showView('timer');
   } else if (item?.type === 'audio') {
     showView('audio');
+  } else if (item?.type === 'song' && !item.songId) {
+    showView('songs');
   } else if (sel?.kind === 'bible') {
     showView('bible');
   } else {
@@ -331,6 +334,9 @@ function fmtDate(iso, opts = { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
 function itemInfo(item) {
+  if (item.type === 'song' && !item.songId) {
+    return { icon: 'music', title: item.label || 'Música', sub: 'Escolher música', placeholder: true };
+  }
   if (item.type === 'song') {
     const s = songById(item.songId);
     return s ? { icon: 'music', title: s.title, sub: songMeta(s) } : { icon: 'music', title: '(música excluída)', sub: '' };
@@ -376,6 +382,7 @@ function renderPlan() {
             selected?.kind === 'item' && selected.id === item.id && 'selected',
             isItemLive(item) && 'is-live',
             info.title.startsWith('(') && 'broken',
+            info.placeholder && 'placeholder',
           ]
             .filter(Boolean)
             .join(' '),
@@ -411,7 +418,8 @@ function renderPlan() {
             e.stopPropagation();
             li.classList.remove('drop');
             const songId = e.dataTransfer.getData('application/x-song-id');
-            if (songId) addSongToPlan(songId, i);
+            if (songId && item.type === 'song' && !item.songId) fillPlaceholder(item, songId);
+            else if (songId) addSongToPlan(songId, i);
             else reorderItem(dragIndex, i);
           },
         },
@@ -441,15 +449,48 @@ for (const el of [$('#planItems'), $('#planEmpty')]) {
   });
 }
 
+// Toda mudança no roteiro é gravada na hora; o botão "Salvo" mostra quando está gravando.
+let pendingSaves = 0;
+
+function renderSaveState(flash = false, label = null) {
+  const btn = $('#saveBtn');
+  btn.classList.toggle('saving', pendingSaves > 0);
+  $('#saveLabel').textContent = pendingSaves > 0 ? 'Salvando…' : label || 'Salvo';
+  if (flash) {
+    btn.classList.remove('flash');
+    void btn.offsetWidth; // reinicia a animação
+    btn.classList.add('flash');
+  }
+}
+
 async function savePlan(plan) {
   const i = plans.findIndex((p) => p.id === plan.id);
   if (i >= 0) plans[i] = plan;
-  const saved = await api.savePlan(plan);
-  const j = plans.findIndex((p) => p.id === saved.id);
-  if (j >= 0) plans[j] = saved;
-  else plans.push(saved);
-  return saved;
+  pendingSaves++;
+  renderSaveState();
+  try {
+    const saved = await api.savePlan(plan);
+    const j = plans.findIndex((p) => p.id === saved.id);
+    if (j >= 0) plans[j] = saved;
+    else plans.push(saved);
+    return saved;
+  } finally {
+    pendingSaves--;
+    renderSaveState();
+  }
 }
+
+// Salvar agora (botão ou ⌘S): grava o roteiro aberto e as preferências, e confirma.
+async function saveNow() {
+  const plan = currentPlan();
+  if (plan) await savePlan(plan);
+  clearTimeout(saveTimer);
+  settings = { ...settings, planId, theme: show.theme, timerMessage: timer.message, timerEndMessage: timer.endMessage };
+  await api.setSettings(settings);
+  const now = new Date();
+  renderSaveState(true, `Salvo às ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+}
+$('#saveBtn').onclick = saveNow;
 
 function openPlanById(id) {
   planId = id;
@@ -513,12 +554,18 @@ $('#planMenu').onclick = async () => {
     { id: 'new', label: 'Novo roteiro…' },
     { id: 'edit', label: 'Editar nome e data…', enabled: !!plan },
     { id: 'dup', label: 'Duplicar roteiro…', enabled: !!plan },
+    { id: 'saveTemplate', label: 'Salvar como modelo…', enabled: !!plan && plan.items.length > 0 },
+    ...(templates.length
+      ? [{ label: 'Excluir modelo', submenu: templates.map((t) => ({ id: 'delTemplate:' + t.id, label: t.name })) }]
+      : []),
     { type: 'separator' },
     { id: 'delete', label: 'Excluir roteiro…', enabled: !!plan },
   ]);
   if (!choice) return;
   if (choice.startsWith('open:')) return openPlanById(choice.slice(5));
   if (choice === 'delete') return deletePlan();
+  if (choice === 'saveTemplate') return openTemplateDialog();
+  if (choice.startsWith('delTemplate:')) return deleteTemplate(choice.slice(12));
   openPlanDialog(choice);
 };
 
@@ -564,6 +611,11 @@ function openPlanDialog(mode) {
   $('#planHeading').textContent = { new: 'Novo roteiro', edit: 'Editar roteiro', dup: 'Duplicar roteiro' }[mode];
   planForm.name.value = mode === 'new' ? '' : plan.name;
   planForm.date.value = mode === 'edit' ? plan.date : nextServiceDate();
+  $('#planTemplateField').classList.toggle('hidden', mode !== 'new' || !templates.length);
+  planForm.template.replaceChildren(
+    h('option', { value: '', textContent: 'Roteiro em branco' }),
+    ...templates.map((t) => h('option', { value: t.id, textContent: `Modelo: ${t.name}`, selected: t.id === settings.lastTemplateId })),
+  );
   planDialog.showModal();
   planForm.name.focus();
   planForm.name.select();
@@ -572,13 +624,73 @@ function openPlanDialog(mode) {
 planForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const fields = { name: planForm.name.value.trim(), date: planForm.date.value };
-  const plan = planEditing?.copyOf
-    ? { ...fields, items: planEditing.copyOf.items.map((i) => ({ ...i, id: uid() })) }
+  const template = !planEditing && templates.find((t) => t.id === planForm.template.value);
+  if (!planEditing) settings.lastTemplateId = template ? template.id : null;
+  const copyFrom = planEditing?.copyOf || template;
+  const plan = copyFrom
+    ? { ...fields, items: copyFrom.items.map((i) => ({ ...i, id: uid() })) }
     : { ...(planEditing || { items: [] }), ...fields };
   const saved = await savePlan(plan);
   planDialog.close();
   openPlanById(saved.id);
 });
+
+// ---------- modelos de roteiro ----------
+
+const templateDialog = $('#templateDialog');
+const templateForm = $('#templateForm');
+
+function openTemplateDialog() {
+  const plan = currentPlan();
+  if (!plan) return;
+  templateForm.name.value = plan.name;
+  const songsCount = plan.items.filter((i) => i.type === 'song').length;
+  $('#templateSummary').textContent =
+    `${plural(plan.items.length, 'item', 'itens')}, ${plural(songsCount, 'música', 'músicas')}. ` +
+    'Timers, telas e áudios vão para o modelo como estão.';
+  templateDialog.showModal();
+  templateForm.name.select();
+}
+
+templateForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const plan = currentPlan();
+  const name = templateForm.name.value.trim();
+  const blank = templateForm.blankSongs.checked;
+  const existing = templates.find((t) => normalize(t.name) === normalize(name));
+  if (existing && !confirm(`Já existe o modelo "${existing.name}". Substituir?`)) return;
+  let n = 0;
+  const items = plan.items.map(({ id, ...item }) =>
+    item.type === 'song' && blank ? { type: 'song', songId: null, label: `Música ${++n}` } : item,
+  );
+  await api.saveTemplate({ ...(existing || {}), name, items });
+  templates = await api.listTemplates();
+  templateDialog.close();
+  renderSaveState(true, 'Modelo salvo');
+});
+
+async function deleteTemplate(id) {
+  const t = templates.find((x) => x.id === id);
+  if (!t || !confirm(`Excluir o modelo "${t.name}"? Os roteiros já criados com ele não mudam.`)) return;
+  await api.deleteTemplate(id);
+  templates = await api.listTemplates();
+}
+
+// Música em branco (vinda de um modelo): o operador escolhe na lista de músicas.
+function fillTarget() {
+  const item = selected?.kind === 'item' ? planItem(selected.id) : null;
+  return item?.type === 'song' && !item.songId ? item : null;
+}
+
+async function fillPlaceholder(item, songId) {
+  await replaceItem({ ...item, songId });
+  select({ kind: 'item', id: item.id });
+}
+
+$('#fillCancel').onclick = () => {
+  selected = null;
+  renderAll();
+};
 
 // Folha do timer do roteiro.
 const itemDialog = $('#itemDialog');
@@ -846,13 +958,16 @@ function renderSongList() {
     .filter((s) => !q || normalize([s.title, s.artist, (s.tags || []).join(' '), s.lyrics].join(' ')).includes(q))
     .sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
   $('#songsEmpty').classList.toggle('hidden', songs.length > 0);
+  const target = fillTarget();
+  $('#fillBanner').classList.toggle('hidden', !target);
+  if (target) $('#fillText').textContent = `Escolha a música para "${target.label || 'Música'}": clique numa música da lista.`;
   $('#songList').replaceChildren(
     ...list.map((s) =>
       h(
         'li',
         {
           className: selected?.kind === 'song' && selected.id === s.id ? 'selected' : '',
-          onclick: () => select({ kind: 'song', id: s.id }),
+          onclick: () => (fillTarget() ? fillPlaceholder(fillTarget(), s.id) : select({ kind: 'song', id: s.id })),
           ondblclick: () => openEditor(s),
           draggable: true,
           ondragstart: (e) => {
@@ -870,7 +985,8 @@ function renderSongList() {
             title: 'Adicionar ao roteiro',
             onclick: (e) => {
               e.stopPropagation();
-              addSongToPlan(s.id);
+              if (fillTarget()) fillPlaceholder(fillTarget(), s.id);
+              else addSongToPlan(s.id);
             },
           },
           icon('plus'),
@@ -1909,6 +2025,11 @@ document.addEventListener('keydown', (e) => {
     $('#search').focus();
     return;
   }
+  if (e.metaKey && key === 's') {
+    e.preventDefault();
+    saveNow();
+    return;
+  }
   if (e.metaKey && key === ',') {
     e.preventDefault();
     if (!dialogOpen) openSettings();
@@ -1934,6 +2055,7 @@ document.addEventListener('keydown', (e) => {
 (async function init() {
   defaultLogoUrl = await api.defaultLogo();
   bibles = await api.listBibles();
+  templates = await api.listTemplates();
   const accent = await api.accentColor();
   if (accent) document.documentElement.style.setProperty('--accent', accent);
 

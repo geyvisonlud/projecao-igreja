@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld('api', {
   savePlan: (plan) => ipcRenderer.invoke('plans:save', plan),
   deletePlan: (id) => ipcRenderer.invoke('plans:delete', id),
 
+  listTemplates: () => ipcRenderer.invoke('templates:list'),
+  saveTemplate: (template) => ipcRenderer.invoke('templates:save', template),
+  deleteTemplate: (id) => ipcRenderer.invoke('templates:delete', id),
+
   listMedia: () => ipcRenderer.invoke('media:list'),
   pickMedia: (role, kinds) => ipcRenderer.invoke('media:pick', role, kinds),
   importMedia: (paths, role) => ipcRenderer.invoke('media:import', paths, role),

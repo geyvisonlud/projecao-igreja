@@ -1,6 +1,6 @@
 # Projeção Igreja
 
-Software de apresentação para o telão da igreja (macOS). Versão 0.6: **banco de músicas**, **Bíblia**,
+Software de apresentação para o telão da igreja (macOS). Versão 0.7: **banco de músicas**, **Bíblia**,
 **roteiro do culto**, **telas com texto, imagens, vídeos e PowerPoint**, **timer** e **fundos em vídeo**.
 
 ## Como rodar no Mac
@@ -59,10 +59,23 @@ timer estiver correndo, aparece **Carregar** para trocar na hora certa.
 | ← ↑ PageUp | slide anterior |
 | B | tela preta |
 | C ou Esc | limpar (esconde a letra, fica só o fundo) |
+| ⌘S | salvar |
 | ⌘N | nova música |
 | ⌘F | buscar música |
 | T | liga/desliga a tradução simultânea |
 | ⌘, | ajustes |
+
+### Salvar e modelos de roteiro
+
+Tudo é salvo sozinho a cada mudança. Ao lado do nome do roteiro aparece **Salvo** (ou *Salvando…*);
+clique nele ou use **⌘S** para salvar na hora e ver a confirmação com o horário.
+
+Para reaproveitar a estrutura do culto toda semana: no menu do nome do roteiro, **Salvar como
+modelo…**. Com a opção *Deixar as músicas em branco* (padrão), as músicas viram lugares vazios
+("Música 1", "Música 2"…) e o resto — timers, telas, áudios — fica como está. Depois, em **Novo
+roteiro…**, escolha *Começar a partir de: Modelo …*. No roteiro novo, clique numa música em branco e
+escolha a música na lista (ou arraste a música para cima dela). Para apagar um modelo: menu do nome
+do roteiro → **Excluir modelo**.
 
 ### Iniciar culto
 
@@ -151,7 +164,7 @@ Em **Ajustes** (⌘,), escolha onde guardar músicas, roteiros e arquivos:
 ## Onde ficam os dados
 
 Na pasta escolhida em **Ajustes** (por padrão `~/Library/Application Support/projecao-igreja/`):
-`songs.json` (músicas), `plans.json` (roteiros), `media.json` e a pasta `media/` (imagens, vídeos,
+`songs.json` (músicas), `plans.json` (roteiros), `templates.json` (modelos), `media.json` e a pasta `media/` (imagens, vídeos,
 áudios e páginas importadas). As preferências deste Mac (`settings.json`, `config.json`) ficam
 sempre na pasta do app. Para fazer backup, copie a pasta de dados.
 

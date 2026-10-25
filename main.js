@@ -82,7 +82,7 @@ function storageInfo() {
   return { mode, path: current, local, drive, home: os.homedir() };
 }
 
-const SHARED_FILES = ['songs.json', 'plans.json', 'media.json'];
+const SHARED_FILES = ['songs.json', 'plans.json', 'templates.json', 'media.json'];
 
 // Troca a pasta de dados. Se a nova pasta já tem dados (ex.: outro Mac sincronizado pelo Drive),
 // passa a usá-los; senão copia os dados atuais para lá.
@@ -349,6 +349,7 @@ function collection(name, file) {
 
 collection('songs', 'songs.json');
 collection('plans', 'plans.json');
+collection('templates', 'templates.json');
 
 ipcMain.handle('media:list', () => listMedia());
 

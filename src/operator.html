@@ -23,6 +23,9 @@
             </span>
             <span data-icon="chevronDown" class="tb-chevron"></span>
           </button>
+          <button id="saveBtn" class="save-state" title="Salvar o roteiro (⌘S) — ele também é salvo sozinho a cada mudança">
+            <span data-icon="check"></span><span id="saveLabel">Salvo</span>
+          </button>
           <button id="playBtn" class="play-service" title="Iniciar o culto: liga o Palco e o Retorno e projeta o primeiro item do roteiro">
             <span data-icon="play"></span><span id="playLabel">Iniciar culto</span>
           </button>
@@ -99,6 +102,10 @@
               <label class="search"><span data-icon="search"></span><input id="search" type="search" placeholder="Título ou trecho da letra" /></label>
               <button id="newSong" class="btn primary" title="Nova música (⌘N)">Nova música</button>
             </div>
+          </div>
+          <div id="fillBanner" class="banner hidden">
+            <span id="fillText"></span>
+            <button id="fillCancel" class="btn">Cancelar</button>
           </div>
           <ul id="songList" class="table-list"></ul>
           <div id="songsEmpty" class="empty-state hidden">
@@ -371,10 +378,31 @@
         <h2 id="planHeading">Novo roteiro</h2>
         <label class="field">Nome <input name="name" required placeholder="Ex.: Culto de sábado" /></label>
         <label class="field">Data <input name="date" type="date" required /></label>
+        <label class="field" id="planTemplateField">
+          Começar a partir de
+          <select name="template"></select>
+        </label>
         <div class="sheet-actions">
           <span class="spacer"></span>
           <button type="button" class="btn" data-close>Cancelar</button>
           <button type="submit" class="btn primary">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Salvar roteiro como modelo -->
+    <dialog id="templateDialog" class="sheet">
+      <form id="templateForm">
+        <h2>Salvar como modelo</h2>
+        <label class="field">Nome do modelo <input name="name" required placeholder="Ex.: Culto de sábado" /></label>
+        <label class="ins-check">
+          <input name="blankSongs" type="checkbox" checked /> Deixar as músicas em branco para escolher a cada semana
+        </label>
+        <p class="hint" id="templateSummary"></p>
+        <div class="sheet-actions">
+          <span class="spacer"></span>
+          <button type="button" class="btn" data-close>Cancelar</button>
+          <button type="submit" class="btn primary">Salvar modelo</button>
         </div>
       </form>
     </dialog>

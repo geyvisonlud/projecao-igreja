@@ -1566,3 +1566,58 @@ input[type='color'] {
 .slide.target .face {
   box-shadow: 0 0 0 3px var(--accent);
 }
+
+/* Salvar */
+.save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  margin-left: 2px;
+  padding: 0 8px 0 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--label-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.save-state:hover {
+  background: var(--fill);
+  color: var(--label);
+}
+.save-state .icon {
+  width: 13px;
+  height: 13px;
+  color: var(--green);
+}
+.save-state.saving .icon {
+  color: var(--label-3);
+}
+.save-state.flash {
+  animation: saved-flash 0.9s ease;
+}
+@keyframes saved-flash {
+  20% {
+    background: color-mix(in srgb, var(--green) 22%, transparent);
+    color: var(--label);
+  }
+}
+
+/* Músicas em branco (modelos) */
+.plan-items li.placeholder .t {
+  font-style: italic;
+  color: var(--label-2);
+}
+.plan-items li.placeholder .s {
+  color: var(--accent);
+}
+#fillBanner {
+  margin-bottom: 12px;
+  background: var(--selection);
+}
+.tb-plan-date {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
